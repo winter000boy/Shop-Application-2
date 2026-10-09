@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:repair_shop_app/core/theme/app_theme.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
 import 'package:repair_shop_app/features/auth/presentation/auth_notifier.dart';
-import 'package:repair_shop_app/features/auth/presentation/login_screen.dart';
 import 'package:repair_shop_app/features/repair_orders/presentation/orders_list_screen.dart';
 import 'package:repair_shop_app/features/settings/presentation/settings_screen.dart';
 import 'package:repair_shop_app/shared/providers.dart';
@@ -21,9 +20,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _handleSync() async {
     setState(() => _syncing = true);
     final success = await ref.read(syncManagerProvider).triggerSync();
+    if (!mounted) return;
     setState(() => _syncing = false);
 
-    if (mounted) {
+    {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success ? 'Database synced successfully!' : 'Sync failed. You are currently offline.'),
@@ -32,6 +32,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _handleLogout() async {
+    final auth = ref.read(authProvider.notifier);
+    // Push anything still queued first; signing out wipes this device's copy of the orders
+    final unsynced = await auth.syncBeforeLogout();
+    if (!mounted) return;
+
+    if (unsynced > 0) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Unsynced changes'),
+          content: Text(
+            '$unsynced change${unsynced == 1 ? '' : 's'} could not be uploaded (you may be offline). '
+            'Signing out now will permanently lose ${unsynced == 1 ? 'it' : 'them'}.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Stay Signed In')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Sign Out Anyway', style: TextStyle(color: AppTheme.dangerColor)),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+
+    // Navigation back to the login screen is handled by the app-level auth listener
+    await auth.logout();
   }
 
   void _showScaffoldedModuleDialog(String title) {
@@ -88,7 +119,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final shopName = LocalCache.getShopName() ?? 'My Repair Shop';
     final ownerName = LocalCache.getOwnerName() ?? 'Owner';
-    final currency = LocalCache.getCurrencySymbol();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -283,16 +313,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
             // Logout Action Button
             ElevatedButton.icon(
-              onPressed: () async {
-                await ref.read(authProvider.notifier).logout();
-                if (mounted) {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LoginScreen()),
-                    (route) => false,
-                  );
-                }
-              },
+              onPressed: _handleLogout,
               icon: const Icon(Icons.logout),
               label: const Text('Sign Out'),
               style: ElevatedButton.styleFrom(

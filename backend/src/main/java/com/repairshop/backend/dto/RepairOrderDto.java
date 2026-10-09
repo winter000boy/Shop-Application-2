@@ -1,18 +1,23 @@
 package com.repairshop.backend.dto;
 
+import com.repairshop.backend.model.OrderStatus;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 public class RepairOrderDto {
 
+    @Size(max = 64, message = "Order ID is too long")
     private String id;
 
-    @NotBlank(message = "Status is mandatory")
-    private String status;
+    @NotNull(message = "Status is mandatory")
+    private OrderStatus status;
 
     @NotNull(message = "Repair date is mandatory")
     private LocalDate repairDate;
@@ -23,24 +28,35 @@ public class RepairOrderDto {
     private boolean reminderEnabled;
 
     @NotBlank(message = "Customer name is mandatory")
+    @Size(max = 255)
     private String customerName;
 
     @NotBlank(message = "Customer number is mandatory")
+    @Size(max = 50)
     private String customerNumber;
 
+    @Size(max = 500)
     private String customerAddress;
 
     @NotBlank(message = "Device problem is mandatory")
+    @Size(max = 1000)
     private String deviceProblem;
 
     @NotNull(message = "Estimate price is mandatory")
+    @DecimalMin(value = "0.00", message = "Estimate price cannot be negative")
+    @Digits(integer = 10, fraction = 2)
     private BigDecimal estimatePrice;
 
     @NotNull(message = "Paid price is mandatory")
+    @DecimalMin(value = "0.00", message = "Paid price cannot be negative")
+    @Digits(integer = 10, fraction = 2)
     private BigDecimal paidPrice;
 
+    @Size(max = 255)
     private String devicePassword;
+    @Size(max = 255)
     private String devicePattern;
+    @Size(max = 2000)
     private String description;
 
     // Accessories
@@ -53,8 +69,10 @@ public class RepairOrderDto {
     private boolean notifyWhatsapp;
     private boolean notifyEmail;
 
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private boolean deleted;
+
+    private Instant createdAt;
+    private Instant updatedAt;
 
     public RepairOrderDto() {
     }
@@ -67,11 +85,11 @@ public class RepairOrderDto {
         this.id = id;
     }
 
-    public String getStatus() {
+    public OrderStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(OrderStatus status) {
         this.status = status;
     }
 
@@ -219,19 +237,27 @@ public class RepairOrderDto {
         this.notifyEmail = notifyEmail;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    public Instant getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
+    public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
     }
 
-    public LocalDateTime getUpdatedAt() {
+    public Instant getUpdatedAt() {
         return updatedAt;
     }
 
-    public void setUpdatedAt(LocalDateTime updatedAt) {
+    public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
     }
 }

@@ -17,7 +17,8 @@ public class SignupRequest {
     @NotBlank(message = "Owner name is mandatory")
     private String ownerName;
 
-    @NotBlank(message = "Community username is mandatory")
+    @NotBlank(message = "Username is mandatory")
+    @Size(min = 3, max = 150, message = "Username must be between 3 and 150 characters")
     private String username;
 
     @NotBlank(message = "Mobile number is mandatory")
@@ -33,7 +34,7 @@ public class SignupRequest {
     private String email;
 
     @NotBlank(message = "Password is mandatory")
-    @Size(min = 8, message = "Password must be at least 8 characters long")
+    @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
     private String password;
 
     @NotBlank(message = "Currency symbol is mandatory")
@@ -76,11 +77,11 @@ public class SignupRequest {
         this.ownerName = ownerName;
     }
 
-    public String getCommunityUsername() {
+    public String getUsername() {
         return username;
     }
 
-    public void setCommunityUsername(String username) {
+    public void setUsername(String username) {
         this.username = username;
     }
 

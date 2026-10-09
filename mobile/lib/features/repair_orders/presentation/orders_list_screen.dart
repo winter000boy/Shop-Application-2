@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:repair_shop_app/core/money.dart';
 import 'package:repair_shop_app/core/theme/app_theme.dart';
 import 'package:repair_shop_app/database/app_database.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
@@ -18,29 +21,35 @@ class _OrdersListScreenState extends ConsumerState<OrdersListScreen> with Single
   late TabController _tabController;
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  Timer? _searchDebounce;
 
   // Order filters map directly to status strings
-  final List<String> _statuses = ['All', 'PENDING', 'REPAIRED', 'DELIVERED', 'CANCELLED'];
+  final List<String> _statuses = [OrderFilter.all, ...OrderStatus.values];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: _statuses.length, vsync: this);
     _tabController.addListener(() {
-      setState(() {}); // Redraw on tab switch
+      // The listener fires during and after the animation; redraw once per switch
+      if (!_tabController.indexIsChanging) setState(() {});
     });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
+  // Wait until typing pauses before re-querying the database
   void _onSearchChanged(String query) {
-    setState(() {
-      _searchQuery = query.trim();
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      setState(() => _searchQuery = query.trim());
     });
   }
 
@@ -196,7 +205,7 @@ class _OrdersListScreenState extends ConsumerState<OrdersListScreen> with Single
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
+                        side: BorderSide(
                           color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
                           width: 1,
                         ),
@@ -305,7 +314,7 @@ class _OrdersListScreenState extends ConsumerState<OrdersListScreen> with Single
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        '$currency${order.estimatePrice}',
+                                        Money.format(order.estimatePriceMinor, currency),
                                         style: const TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
@@ -313,7 +322,7 @@ class _OrdersListScreenState extends ConsumerState<OrdersListScreen> with Single
                                         ),
                                       ),
                                       Text(
-                                        'Paid: $currency${order.paidPrice}',
+                                        'Paid: ${Money.format(order.paidPriceMinor, currency)}',
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,

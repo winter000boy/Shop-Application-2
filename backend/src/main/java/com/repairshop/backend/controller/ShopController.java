@@ -21,25 +21,12 @@ public class ShopController {
     @GetMapping
     public ResponseEntity<AuthResponse.ShopDto> getShopProfile() {
         Shop shop = shopService.getCurrentShop();
-        return ResponseEntity.ok(toDto(shop));
+        return ResponseEntity.ok(AuthResponse.ShopDto.from(shop));
     }
 
     @PutMapping
     public ResponseEntity<AuthResponse.ShopDto> updateShopProfile(@Valid @RequestBody ShopUpdateDto dto) {
         Shop updatedShop = shopService.updateShopDetails(dto);
-        return ResponseEntity.ok(toDto(updatedShop));
-    }
-
-    private AuthResponse.ShopDto toDto(Shop shop) {
-        return new AuthResponse.ShopDto(
-                shop.getId(),
-                shop.getShopName(),
-                shop.getShopType(),
-                shop.getOwnerName(),
-                shop.getCommunityUsername(),
-                shop.getEmail(),
-                shop.getCurrencySymbol(),
-                shop.getLogoUrl()
-        );
+        return ResponseEntity.ok(AuthResponse.ShopDto.from(updatedShop));
     }
 }

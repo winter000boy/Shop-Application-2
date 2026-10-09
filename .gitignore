@@ -1,0 +1,13 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Backend build output
+backend/target/
+
+# Local environment files (secrets)
+.env
+.env.*
+!.env.example

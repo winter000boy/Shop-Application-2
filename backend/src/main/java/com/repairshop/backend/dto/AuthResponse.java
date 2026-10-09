@@ -1,5 +1,7 @@
 package com.repairshop.backend.dto;
 
+import com.repairshop.backend.model.Shop;
+
 import java.util.UUID;
 
 public class AuthResponse {
@@ -51,23 +53,33 @@ public class AuthResponse {
         private UUID id;
         private String shopName;
         private String shopType;
+        private String gstNumber;
         private String ownerName;
         private String username;
         private String email;
+        private String mobileNumber;
+        private String countryCode;
+        private String address;
         private String currencySymbol;
         private String logoUrl;
 
         public ShopDto() {}
 
-        public ShopDto(UUID id, String shopName, String shopType, String ownerName, String username, String email, String currencySymbol, String logoUrl) {
-            this.id = id;
-            this.shopName = shopName;
-            this.shopType = shopType;
-            this.ownerName = ownerName;
-            this.username = username;
-            this.email = email;
-            this.currencySymbol = currencySymbol;
-            this.logoUrl = logoUrl;
+        public static ShopDto from(Shop shop) {
+            ShopDto dto = new ShopDto();
+            dto.id = shop.getId();
+            dto.shopName = shop.getShopName();
+            dto.shopType = shop.getShopType();
+            dto.gstNumber = shop.getGstNumber();
+            dto.ownerName = shop.getOwnerName();
+            dto.username = shop.getCommunityUsername();
+            dto.email = shop.getEmail();
+            dto.mobileNumber = shop.getMobileNumber();
+            dto.countryCode = shop.getCountryCode();
+            dto.address = shop.getAddress();
+            dto.currencySymbol = shop.getCurrencySymbol();
+            dto.logoUrl = shop.getLogoUrl();
+            return dto;
         }
 
         public UUID getId() {
@@ -94,6 +106,14 @@ public class AuthResponse {
             this.shopType = shopType;
         }
 
+        public String getGstNumber() {
+            return gstNumber;
+        }
+
+        public void setGstNumber(String gstNumber) {
+            this.gstNumber = gstNumber;
+        }
+
         public String getOwnerName() {
             return ownerName;
         }
@@ -102,11 +122,11 @@ public class AuthResponse {
             this.ownerName = ownerName;
         }
 
-        public String getCommunityUsername() {
+        public String getUsername() {
             return username;
         }
 
-        public void setCommunityUsername(String username) {
+        public void setUsername(String username) {
             this.username = username;
         }
 
@@ -116,6 +136,30 @@ public class AuthResponse {
 
         public void setEmail(String email) {
             this.email = email;
+        }
+
+        public String getMobileNumber() {
+            return mobileNumber;
+        }
+
+        public void setMobileNumber(String mobileNumber) {
+            this.mobileNumber = mobileNumber;
+        }
+
+        public String getCountryCode() {
+            return countryCode;
+        }
+
+        public void setCountryCode(String countryCode) {
+            this.countryCode = countryCode;
+        }
+
+        public String getAddress() {
+            return address;
+        }
+
+        public void setAddress(String address) {
+            this.address = address;
         }
 
         public String getCurrencySymbol() {

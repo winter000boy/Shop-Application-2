@@ -1,14 +1,15 @@
 package com.repairshop.backend.dto;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public class SyncResponse {
 
+    // Orders changed on the server since lastSyncTime; entries with deleted=true must be removed locally
     private List<RepairOrderDto> serverOrders;
-    private LocalDateTime serverSyncTime;
+    private Instant serverSyncTime;
 
-    public SyncResponse(List<RepairOrderDto> serverOrders, LocalDateTime serverSyncTime) {
+    public SyncResponse(List<RepairOrderDto> serverOrders, Instant serverSyncTime) {
         this.serverOrders = serverOrders;
         this.serverSyncTime = serverSyncTime;
     }
@@ -21,11 +22,11 @@ public class SyncResponse {
         this.serverOrders = serverOrders;
     }
 
-    public LocalDateTime getServerSyncTime() {
+    public Instant getServerSyncTime() {
         return serverSyncTime;
     }
 
-    public void setServerSyncTime(LocalDateTime serverSyncTime) {
+    public void setServerSyncTime(Instant serverSyncTime) {
         this.serverSyncTime = serverSyncTime;
     }
 }

@@ -1,15 +1,15 @@
 package com.repairshop.backend.controller;
 
+import com.repairshop.backend.dto.PageResponse;
 import com.repairshop.backend.dto.RepairOrderDto;
 import com.repairshop.backend.dto.SyncRequest;
 import com.repairshop.backend.dto.SyncResponse;
+import com.repairshop.backend.model.OrderStatus;
 import com.repairshop.backend.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/orders")
@@ -22,11 +22,13 @@ public class OrderController {
     }
 
     @GetMapping
-    public ResponseEntity<List<RepairOrderDto>> getOrders(
-            @RequestParam(value = "status", required = false) String status,
-            @RequestParam(value = "query", required = false) String query
+    public ResponseEntity<PageResponse<RepairOrderDto>> getOrders(
+            @RequestParam(value = "status", required = false) OrderStatus status,
+            @RequestParam(value = "query", required = false) String query,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size
     ) {
-        return ResponseEntity.ok(orderService.getOrders(status, query));
+        return ResponseEntity.ok(orderService.getOrders(status, query, page, size));
     }
 
     @GetMapping("/{id}")
@@ -54,7 +56,7 @@ public class OrderController {
     }
 
     @PostMapping("/sync")
-    public ResponseEntity<SyncResponse> syncOrders(@RequestBody SyncRequest request) {
+    public ResponseEntity<SyncResponse> syncOrders(@Valid @RequestBody SyncRequest request) {
         return ResponseEntity.ok(orderService.syncOrders(request));
     }
 }

@@ -3,6 +3,7 @@ package com.repairshop.backend.service;
 import com.repairshop.backend.dto.ShopUpdateDto;
 import com.repairshop.backend.model.Shop;
 import com.repairshop.backend.repository.ShopRepository;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -18,14 +19,20 @@ public class ShopService {
     }
 
     public Shop getCurrentShop() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        // JwtAuthenticationFilter already loaded the Shop as the principal; avoid a second query per request
+        if (authentication != null && authentication.getPrincipal() instanceof Shop shop) {
+            return shop;
+        }
+        String email = authentication != null ? authentication.getName() : null;
         return shopRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("Current authenticated shop owner not found"));
     }
 
     @Transactional
     public Shop updateShopDetails(ShopUpdateDto dto) {
-        Shop currentShop = getCurrentShop();
+        Shop currentShop = shopRepository.findById(getCurrentShop().getId())
+                .orElseThrow(() -> new UsernameNotFoundException("Current authenticated shop owner not found"));
         currentShop.setShopName(dto.getShopName());
         currentShop.setShopType(dto.getShopType());
         currentShop.setOwnerName(dto.getOwnerName());
@@ -34,6 +41,7 @@ public class ShopService {
         currentShop.setAddress(dto.getShopAddress());
         currentShop.setCurrencySymbol(dto.getCurrencySymbol());
         currentShop.setLogoUrl(dto.getLogoUrl());
+        currentShop.setGstNumber(dto.getGstNumber());
 
         return shopRepository.save(currentShop);
     }

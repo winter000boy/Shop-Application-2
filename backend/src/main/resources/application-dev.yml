@@ -1,0 +1,18 @@
+# Local development profile: in-memory H2 (PostgreSQL compatibility mode) with throwaway keys.
+# NEVER use these keys in a deployed environment.
+spring:
+  datasource:
+    url: jdbc:h2:mem:repairshopdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: sa
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:ZGV2LW9ubHktand0LXNlY3JldC1kby1ub3QtdXNlLWluLXByb2R1Y3Rpb24hIQ==}
+  crypto:
+    device-secret-key: ${DEVICE_SECRET_KEY:ZGV2LW9ubHktZGV2aWNlLXNlY3JldC1rZXktMzJieXQ=}

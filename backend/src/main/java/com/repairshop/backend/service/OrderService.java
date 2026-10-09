@@ -1,49 +1,83 @@
 package com.repairshop.backend.service;
 
+import com.repairshop.backend.dto.PageResponse;
 import com.repairshop.backend.dto.RepairOrderDto;
 import com.repairshop.backend.dto.SyncRequest;
 import com.repairshop.backend.dto.SyncResponse;
+import com.repairshop.backend.exception.ConflictException;
+import com.repairshop.backend.exception.ResourceNotFoundException;
+import com.repairshop.backend.model.OrderStatus;
 import com.repairshop.backend.model.RepairOrder;
 import com.repairshop.backend.model.Shop;
 import com.repairshop.backend.repository.RepairOrderRepository;
+import jakarta.validation.Validator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 public class OrderService {
 
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
+    static final int MAX_PAGE_SIZE = 100;
+    // Re-send rows written slightly before the client's cursor, so a transaction that committed
+    // late (after another device's sync read the table) is never skipped. Clients upsert idempotently.
+    static final Duration SYNC_OVERLAP = Duration.ofSeconds(30);
+    // Client edit timestamps further in the future than this are clamped to "now" so a phone with a
+    // wrong clock can't win every future conflict.
+    static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(5);
+
     private final RepairOrderRepository orderRepository;
     private final ShopService shopService;
+    private final Validator validator;
 
-    public OrderService(RepairOrderRepository orderRepository, ShopService shopService) {
+    public OrderService(RepairOrderRepository orderRepository, ShopService shopService, Validator validator) {
         this.orderRepository = orderRepository;
         this.shopService = shopService;
+        this.validator = validator;
     }
 
-    public List<RepairOrderDto> getOrders(String status, String query) {
+    @Transactional(readOnly = true)
+    public PageResponse<RepairOrderDto> getOrders(OrderStatus status, String query, int page, int size) {
         Shop currentShop = shopService.getCurrentShop();
-        List<RepairOrder> orders;
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        boolean hasQuery = query != null && !query.isBlank();
 
-        if (status != null && !status.isBlank() && query != null && !query.isBlank()) {
-            orders = orderRepository.searchOrdersByStatus(currentShop, status, query);
-        } else if (status != null && !status.isBlank()) {
-            orders = orderRepository.findByShopAndStatusOrderByCreatedAtDesc(currentShop, status);
-        } else if (query != null && !query.isBlank()) {
-            orders = orderRepository.searchOrders(currentShop, query);
+        Page<RepairOrder> orders;
+        if (status != null && hasQuery) {
+            orders = orderRepository.searchOrdersByStatus(currentShop, status, query.trim(), pageable);
+        } else if (status != null) {
+            orders = orderRepository.findByShopAndStatusAndDeletedFalse(currentShop, status, pageable);
+        } else if (hasQuery) {
+            orders = orderRepository.searchOrders(currentShop, query.trim(), pageable);
         } else {
-            orders = orderRepository.findByShopOrderByCreatedAtDesc(currentShop);
+            orders = orderRepository.findByShopAndDeletedFalse(currentShop, pageable);
         }
 
-        return orders.stream().map(this::toDto).collect(Collectors.toList());
+        return PageResponse.of(orders.map(this::toDto));
     }
 
+    @Transactional(readOnly = true)
     public RepairOrderDto getOrderById(String id) {
         RepairOrder order = getAndVerifyOrder(id);
         return toDto(order);
@@ -53,16 +87,19 @@ public class OrderService {
     public RepairOrderDto createOrder(RepairOrderDto dto) {
         Shop currentShop = shopService.getCurrentShop();
         RepairOrder order = new RepairOrder();
-        
+
         // Use client-provided ID (UUID) or generate one if not present
         if (dto.getId() == null || dto.getId().isBlank()) {
             order.setId(UUID.randomUUID().toString());
+        } else if (orderRepository.existsById(dto.getId())) {
+            throw new ConflictException("A repair order with this ID already exists");
         } else {
             order.setId(dto.getId());
         }
 
         order.setShop(currentShop);
         updateOrderFields(order, dto);
+        order.setUpdatedAt(now());
 
         RepairOrder savedOrder = orderRepository.save(order);
         return toDto(savedOrder);
@@ -72,6 +109,7 @@ public class OrderService {
     public RepairOrderDto updateOrder(String id, RepairOrderDto dto) {
         RepairOrder order = getAndVerifyOrder(id);
         updateOrderFields(order, dto);
+        order.setUpdatedAt(now());
         RepairOrder savedOrder = orderRepository.save(order);
         return toDto(savedOrder);
     }
@@ -79,72 +117,86 @@ public class OrderService {
     @Transactional
     public void deleteOrder(String id) {
         RepairOrder order = getAndVerifyOrder(id);
-        orderRepository.delete(order);
+        markDeleted(order, now());
     }
 
     @Transactional
     public SyncResponse syncOrders(SyncRequest request) {
         Shop currentShop = shopService.getCurrentShop();
-        LocalDateTime serverSyncTime = LocalDateTime.now();
+        Instant serverSyncTime = now();
 
-        // 1. Process deletions requested by the client
-        if (request.getDeletedOrderIds() != null && !request.getDeletedOrderIds().isEmpty()) {
-            for (String orderId : request.getDeletedOrderIds()) {
-                orderRepository.findById(orderId).ifPresent(order -> {
-                    if (order.getShop().getId().equals(currentShop.getId())) {
-                        orderRepository.delete(order);
-                    }
-                });
+        List<String> deletedIds = request.getDeletedOrderIds() != null ? request.getDeletedOrderIds() : List.of();
+        List<RepairOrderDto> localOrders = request.getLocalOrders() != null ? request.getLocalOrders() : List.of();
+
+        // Load every referenced order in one query instead of one query per order
+        Set<String> referencedIds = new HashSet<>(deletedIds);
+        localOrders.stream().map(RepairOrderDto::getId).filter(id -> id != null && !id.isBlank()).forEach(referencedIds::add);
+        Map<String, RepairOrder> existing = orderRepository.findAllById(referencedIds).stream()
+                .collect(Collectors.toMap(RepairOrder::getId, Function.identity()));
+
+        // Orders whose pushed version lost a conflict; the winning server version is sent back
+        Map<String, RepairOrder> rejected = new LinkedHashMap<>();
+
+        // 1. Deletions requested by the client become tombstones (so other devices learn about them)
+        for (String orderId : deletedIds) {
+            RepairOrder order = existing.get(orderId);
+            if (order != null && belongsTo(order, currentShop) && !order.isDeleted()) {
+                markDeleted(order, serverSyncTime);
             }
         }
 
-        // 2. Process additions/updates requested by the client
-        if (request.getLocalOrders() != null && !request.getLocalOrders().isEmpty()) {
-            for (RepairOrderDto localDto : request.getLocalOrders()) {
-                if (localDto.getId() == null || localDto.getId().isBlank()) {
+        // 2. Additions/updates requested by the client (last-write-wins on the edit timestamp)
+        List<RepairOrder> toSave = new ArrayList<>();
+        for (RepairOrderDto localDto : localOrders) {
+            if (localDto.getId() == null || localDto.getId().isBlank()) {
+                continue;
+            }
+            if (!validator.validate(localDto).isEmpty()) {
+                log.warn("Skipping invalid order {} in sync from shop {}", localDto.getId(), currentShop.getId());
+                continue;
+            }
+
+            Instant clientEditTime = clampToServerClock(localDto.getUpdatedAt(), serverSyncTime);
+            RepairOrder order = existing.get(localDto.getId());
+
+            if (order != null) {
+                // Ensure the order belongs to the syncing shop
+                if (!belongsTo(order, currentShop)) {
                     continue;
                 }
-
-                Optional<RepairOrder> existingOrderOpt = orderRepository.findById(localDto.getId());
-                RepairOrder order;
-                
-                if (existingOrderOpt.isPresent()) {
-                    order = existingOrderOpt.get();
-                    // Ensure the order belongs to the syncing shop
-                    if (!order.getShop().getId().equals(currentShop.getId())) {
-                        continue;
-                    }
-                } else {
-                    order = new RepairOrder();
-                    order.setId(localDto.getId());
-                    order.setShop(currentShop);
+                // A deletion wins over a concurrent edit; an older edit loses to a newer one
+                if (order.isDeleted() || (clientEditTime != null && !clientEditTime.isAfter(order.getUpdatedAt()))) {
+                    rejected.put(order.getId(), order);
+                    continue;
                 }
-
-                // If existing, compare timestamps to resolve conflicts (last-write-wins)
-                if (existingOrderOpt.isPresent() && localDto.getUpdatedAt() != null && order.getUpdatedAt() != null) {
-                    if (localDto.getUpdatedAt().isBefore(order.getUpdatedAt())) {
-                        // Server version is newer, skip saving local client version
-                        continue;
-                    }
-                }
-
-                updateOrderFields(order, localDto);
-                if (localDto.getCreatedAt() != null) {
-                    order.setCreatedAt(localDto.getCreatedAt());
-                }
-                orderRepository.save(order);
+            } else {
+                order = new RepairOrder();
+                order.setId(localDto.getId());
+                order.setShop(currentShop);
+                order.setCreatedAt(localDto.getCreatedAt() != null ? localDto.getCreatedAt() : serverSyncTime);
             }
-        }
 
-        // 3. Fetch server updates to send back to the client
+            updateOrderFields(order, localDto);
+            order.setUpdatedAt(clientEditTime != null ? clientEditTime : serverSyncTime);
+            toSave.add(order);
+        }
+        orderRepository.saveAll(toSave);
+        orderRepository.flush();
+
+        // 3. Server changes to send back to the client (tombstones included as deleted=true)
         List<RepairOrder> serverUpdates;
         if (request.getLastSyncTime() == null) {
-            serverUpdates = orderRepository.findByShopOrderByCreatedAtDesc(currentShop);
+            serverUpdates = orderRepository.findByShopAndDeletedFalse(currentShop);
         } else {
-            serverUpdates = orderRepository.findByShopAndUpdatedAtAfter(currentShop, request.getLastSyncTime());
+            serverUpdates = orderRepository.findByShopAndServerModifiedAtAfter(
+                    currentShop, request.getLastSyncTime().minus(SYNC_OVERLAP));
         }
 
-        List<RepairOrderDto> updatesDto = serverUpdates.stream()
+        Map<String, RepairOrder> response = new LinkedHashMap<>();
+        serverUpdates.forEach(order -> response.put(order.getId(), order));
+        rejected.forEach(response::putIfAbsent);
+
+        List<RepairOrderDto> updatesDto = response.values().stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
 
@@ -153,13 +205,32 @@ public class OrderService {
 
     private RepairOrder getAndVerifyOrder(String id) {
         Shop currentShop = shopService.getCurrentShop();
-        RepairOrder order = orderRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Repair order not found with ID: " + id));
+        // Orders of other shops are reported as "not found" so IDs can't be probed
+        return orderRepository.findById(id)
+                .filter(order -> belongsTo(order, currentShop) && !order.isDeleted())
+                .orElseThrow(() -> new ResourceNotFoundException("Repair order not found"));
+    }
 
-        if (!order.getShop().getId().equals(currentShop.getId())) {
-            throw new SecurityException("Unauthorized access to repair order");
+    private static boolean belongsTo(RepairOrder order, Shop shop) {
+        return order.getShop().getId().equals(shop.getId());
+    }
+
+    private static Instant now() {
+        return Instant.now().truncatedTo(ChronoUnit.MILLIS);
+    }
+
+    private static Instant clampToServerClock(Instant clientTime, Instant serverNow) {
+        if (clientTime == null) {
+            return null;
         }
-        return order;
+        return clientTime.isAfter(serverNow.plus(MAX_CLOCK_SKEW)) ? serverNow : clientTime;
+    }
+
+    private static void markDeleted(RepairOrder order, Instant when) {
+        order.setDeleted(true);
+        order.setDevicePassword(null);
+        order.setDevicePattern(null);
+        order.setUpdatedAt(when);
     }
 
     private void updateOrderFields(RepairOrder order, RepairOrderDto dto) {
@@ -173,8 +244,10 @@ public class OrderService {
         order.setDeviceProblem(dto.getDeviceProblem());
         order.setEstimatePrice(dto.getEstimatePrice());
         order.setPaidPrice(dto.getPaidPrice());
-        order.setDevicePassword(dto.getDevicePassword());
-        order.setDevicePattern(dto.getDevicePattern());
+        // Once the device has left the shop there is no reason to keep the customer's unlock secrets
+        boolean deviceReturned = dto.getStatus() == OrderStatus.DELIVERED || dto.getStatus() == OrderStatus.CANCELLED;
+        order.setDevicePassword(deviceReturned ? null : dto.getDevicePassword());
+        order.setDevicePattern(deviceReturned ? null : dto.getDevicePattern());
         order.setDescription(dto.getDescription());
         order.setAccessoriesSim(dto.isAccessoriesSim());
         order.setAccessoriesSdCard(dto.isAccessoriesSdCard());
@@ -206,6 +279,7 @@ public class OrderService {
         dto.setAccessoriesCharger(order.isAccessoriesCharger());
         dto.setNotifyWhatsapp(order.isNotifyWhatsapp());
         dto.setNotifyEmail(order.isNotifyEmail());
+        dto.setDeleted(order.isDeleted());
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
         return dto;

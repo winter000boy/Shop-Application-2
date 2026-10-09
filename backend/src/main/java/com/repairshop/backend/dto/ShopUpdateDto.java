@@ -26,7 +26,17 @@ public class ShopUpdateDto {
 
     private String logoUrl;
 
+    private String gstNumber;
+
     public ShopUpdateDto() {
+    }
+
+    public String getGstNumber() {
+        return gstNumber;
+    }
+
+    public void setGstNumber(String gstNumber) {
+        this.gstNumber = gstNumber;
     }
 
     public String getShopName() {
