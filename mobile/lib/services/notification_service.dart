@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
+import 'package:repair_shop_app/core/money.dart';
+
 abstract class NotificationProvider {
   Future<bool> sendOrderReceived({
     required String customerName,
     required String customerNumber,
     required String orderId,
-    required double estimatePrice,
+    required int estimatePriceMinor,
     required String currency,
   });
 
@@ -11,7 +14,7 @@ abstract class NotificationProvider {
     required String customerName,
     required String customerNumber,
     required String orderId,
-    required double estimatePrice,
+    required int estimatePriceMinor,
     required String currency,
   });
 
@@ -24,7 +27,7 @@ abstract class NotificationProvider {
   Future<bool> sendPaymentPending({
     required String customerName,
     required String customerNumber,
-    required double pendingAmount,
+    required int pendingAmountMinor,
     required String currency,
   });
 }
@@ -36,14 +39,14 @@ class MockNotificationProvider implements NotificationProvider {
     required String customerName,
     required String customerNumber,
     required String orderId,
-    required double estimatePrice,
+    required int estimatePriceMinor,
     required String currency,
   }) async {
-    print('----------------------------------------');
-    print('[WHATSAPP / EMAIL NOTIFICATION MOCK]');
-    print('To: $customerName ($customerNumber)');
-    print('Message: Hello $customerName, we have received your device (Order ID: $orderId). The estimated repair cost is $currency$estimatePrice. Thank you!');
-    print('----------------------------------------');
+    debugPrint('----------------------------------------');
+    debugPrint('[WHATSAPP / EMAIL NOTIFICATION MOCK]');
+    debugPrint('To: $customerName ($customerNumber)');
+    debugPrint('Message: Hello $customerName, we have received your device (Order ID: $orderId). The estimated repair cost is ${Money.format(estimatePriceMinor, currency)}. Thank you!');
+    debugPrint('----------------------------------------');
     return true;
   }
 
@@ -52,14 +55,14 @@ class MockNotificationProvider implements NotificationProvider {
     required String customerName,
     required String customerNumber,
     required String orderId,
-    required double estimatePrice,
+    required int estimatePriceMinor,
     required String currency,
   }) async {
-    print('----------------------------------------');
-    print('[WHATSAPP / EMAIL NOTIFICATION MOCK]');
-    print('To: $customerName ($customerNumber)');
-    print('Message: Great news $customerName! Your device under Order ID $orderId has been repaired successfully. Total payable: $currency$estimatePrice. You can collect it at your earliest convenience.');
-    print('----------------------------------------');
+    debugPrint('----------------------------------------');
+    debugPrint('[WHATSAPP / EMAIL NOTIFICATION MOCK]');
+    debugPrint('To: $customerName ($customerNumber)');
+    debugPrint('Message: Great news $customerName! Your device under Order ID $orderId has been repaired successfully. Total payable: ${Money.format(estimatePriceMinor, currency)}. You can collect it at your earliest convenience.');
+    debugPrint('----------------------------------------');
     return true;
   }
 
@@ -69,11 +72,11 @@ class MockNotificationProvider implements NotificationProvider {
     required String customerNumber,
     required String orderId,
   }) async {
-    print('----------------------------------------');
-    print('[WHATSAPP / EMAIL NOTIFICATION MOCK]');
-    print('To: $customerName ($customerNumber)');
-    print('Message: Dear $customerName, this is a reminder to collect your repaired device (Order ID: $orderId) from our shop. See you soon!');
-    print('----------------------------------------');
+    debugPrint('----------------------------------------');
+    debugPrint('[WHATSAPP / EMAIL NOTIFICATION MOCK]');
+    debugPrint('To: $customerName ($customerNumber)');
+    debugPrint('Message: Dear $customerName, this is a reminder to collect your repaired device (Order ID: $orderId) from our shop. See you soon!');
+    debugPrint('----------------------------------------');
     return true;
   }
 
@@ -81,14 +84,14 @@ class MockNotificationProvider implements NotificationProvider {
   Future<bool> sendPaymentPending({
     required String customerName,
     required String customerNumber,
-    required double pendingAmount,
+    required int pendingAmountMinor,
     required String currency,
   }) async {
-    print('----------------------------------------');
-    print('[WHATSAPP / EMAIL NOTIFICATION MOCK]');
-    print('To: $customerName ($customerNumber)');
-    print('Message: Dear $customerName, a payment of $currency$pendingAmount is pending for your recent repair order. Kindly complete the transaction at your earliest convenience.');
-    print('----------------------------------------');
+    debugPrint('----------------------------------------');
+    debugPrint('[WHATSAPP / EMAIL NOTIFICATION MOCK]');
+    debugPrint('To: $customerName ($customerNumber)');
+    debugPrint('Message: Dear $customerName, a payment of ${Money.format(pendingAmountMinor, currency)} is pending for your recent repair order. Kindly complete the transaction at your earliest convenience.');
+    debugPrint('----------------------------------------');
     return true;
   }
 }

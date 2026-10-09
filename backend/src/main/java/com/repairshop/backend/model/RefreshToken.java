@@ -12,8 +12,9 @@ public class RefreshToken {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, unique = true)
-    private String token;
+    // SHA-256 hex digest of the opaque token handed to the client; the raw token is never stored.
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shop_id", referencedColumnName = "id", nullable = false)
@@ -36,12 +37,12 @@ public class RefreshToken {
         this.id = id;
     }
 
-    public String getToken() {
-        return token;
+    public String getTokenHash() {
+        return tokenHash;
     }
 
-    public void setToken(String token) {
-        this.token = token;
+    public void setTokenHash(String tokenHash) {
+        this.tokenHash = tokenHash;
     }
 
     public Shop getShop() {

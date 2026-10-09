@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:repair_shop_app/core/money.dart';
 import 'package:repair_shop_app/core/theme/app_theme.dart';
 import 'package:repair_shop_app/database/app_database.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
@@ -71,10 +72,11 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
       _customerNumberController.text = order.customerNumber;
       _customerAddressController.text = order.customerAddress ?? '';
       _deviceProblemController.text = order.deviceProblem;
-      _estimatePriceController.text = order.estimatePrice.toString();
-      _paidPriceController.text = order.paidPrice.toString();
-      _devicePasswordController.text = order.devicePassword ?? '';
-      _devicePattern = order.devicePattern;
+      _estimatePriceController.text = Money.toInput(order.estimatePriceMinor);
+      _paidPriceController.text = Money.toInput(order.paidPriceMinor);
+      final secrets = ref.read(ordersOperationsProvider).revealDeviceSecrets(order);
+      _devicePasswordController.text = secrets.password ?? '';
+      _devicePattern = secrets.pattern;
       if (_devicePattern != null && _devicePattern!.isNotEmpty) {
         _patternPoints = _devicePattern!.split('-').map(int.parse).toList();
       }
@@ -249,57 +251,34 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
   Future<void> _handleSubmitOrder() async {
     if (_formKey.currentState!.validate()) {
       final String timeStr = '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
-      final double estPrice = double.parse(_estimatePriceController.text);
-      final double pPrice = double.parse(_paidPriceController.text);
+      final String devicePassword = _devicePasswordController.text.trim();
+      final input = OrderInput(
+        status: _selectedStatus,
+        repairDate: _selectedDate,
+        repairTime: timeStr,
+        reminderEnabled: _reminderEnabled,
+        customerName: _customerNameController.text.trim(),
+        customerNumber: _customerNumberController.text.trim(),
+        customerAddress: _customerAddressController.text.trim(),
+        deviceProblem: _deviceProblemController.text.trim(),
+        estimatePriceMinor: Money.parseMinor(_estimatePriceController.text)!,
+        paidPriceMinor: Money.parseMinor(_paidPriceController.text)!,
+        devicePassword: devicePassword.isEmpty ? null : devicePassword,
+        devicePattern: _devicePattern,
+        description: _descriptionController.text.trim(),
+        accessoriesSim: _accSim,
+        accessoriesSdCard: _accSd,
+        accessoriesBackCover: _accCover,
+        accessoriesCharger: _accCharger,
+        notifyWhatsapp: _notifyWhatsapp,
+        notifyEmail: _notifyEmail,
+      );
 
       final ops = ref.read(ordersOperationsProvider);
-
       if (_isEditing) {
-        await ops.updateOrder(
-          id: widget.order!.id,
-          status: _selectedStatus,
-          repairDate: _selectedDate,
-          repairTime: timeStr,
-          reminderEnabled: _reminderEnabled,
-          customerName: _customerNameController.text.trim(),
-          customerNumber: _customerNumberController.text.trim(),
-          customerAddress: _customerAddressController.text.trim(),
-          deviceProblem: _deviceProblemController.text.trim(),
-          estimatePrice: estPrice,
-          paidPrice: pPrice,
-          devicePassword: _devicePasswordController.text.trim(),
-          devicePattern: _devicePattern,
-          description: _descriptionController.text.trim(),
-          accessoriesSim: _accSim,
-          accessoriesSdCard: _accSd,
-          accessoriesBackCover: _accCover,
-          accessoriesCharger: _accCharger,
-          notifyWhatsapp: _notifyWhatsapp,
-          notifyEmail: _notifyEmail,
-          createdAt: widget.order!.createdAt,
-        );
+        await ops.updateOrder(widget.order!.id, input);
       } else {
-        await ops.createOrder(
-          status: _selectedStatus,
-          repairDate: _selectedDate,
-          repairTime: timeStr,
-          reminderEnabled: _reminderEnabled,
-          customerName: _customerNameController.text.trim(),
-          customerNumber: _customerNumberController.text.trim(),
-          customerAddress: _customerAddressController.text.trim(),
-          deviceProblem: _deviceProblemController.text.trim(),
-          estimatePrice: estPrice,
-          paidPrice: pPrice,
-          devicePassword: _devicePasswordController.text.trim(),
-          devicePattern: _devicePattern,
-          description: _descriptionController.text.trim(),
-          accessoriesSim: _accSim,
-          accessoriesSdCard: _accSd,
-          accessoriesBackCover: _accCover,
-          accessoriesCharger: _accCharger,
-          notifyWhatsapp: _notifyWhatsapp,
-          notifyEmail: _notifyEmail,
-        );
+        await ops.createOrder(input);
       }
 
       if (mounted) {
@@ -318,7 +297,6 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
   @override
   Widget build(BuildContext context) {
     final currency = LocalCache.getCurrencySymbol();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -455,14 +433,14 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: _estimatePriceController,
-                          keyboardType: TextInputType.number,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: InputDecoration(
                             labelText: 'Estimate Price ($currency) *',
                             prefixIcon: const Icon(Icons.sell_outlined),
                           ),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) return 'Required';
-                            if (double.tryParse(val) == null) return 'Must be numeric';
+                            if (Money.parseMinor(val) == null) return 'Enter a valid amount';
                             return null;
                           },
                         ),
@@ -471,14 +449,14 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
                       Expanded(
                         child: TextFormField(
                           controller: _paidPriceController,
-                          keyboardType: TextInputType.number,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: InputDecoration(
                             labelText: 'Advance Paid ($currency) *',
                             prefixIcon: const Icon(Icons.payments_outlined),
                           ),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) return 'Required';
-                            if (double.tryParse(val) == null) return 'Must be numeric';
+                            if (Money.parseMinor(val) == null) return 'Enter a valid amount';
                             return null;
                           },
                         ),
@@ -620,7 +598,7 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
+        side: BorderSide(
           color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
           width: 1.0,
         ),

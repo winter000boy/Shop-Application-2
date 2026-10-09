@@ -15,11 +15,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _OrdersSyncState {
-  final bool isLoading;
-  _OrdersSyncState(this.isLoading);
-}
-
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _formKey = GlobalKey<FormState>();
 
@@ -42,7 +37,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'Computer Repair',
     'Electronics Repair'
   ];
-  final List<String> _currencies = ['₹', '$', '€', '£', '¥', 'AED'];
+  final List<String> _currencies = ['₹', r'$', '€', '£', '¥', 'AED'];
   
   final Map<String, String> _languages = {
     'en': 'English',
@@ -56,8 +51,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     super.initState();
     _shopNameController.text = LocalCache.getShopName() ?? '';
     _ownerNameController.text = LocalCache.getOwnerName() ?? '';
-    _mobileController.text = Hive.box('auth_session').get(LocalCache.keyMobileNumber) as String? ?? '';
-    _addressController.text = LocalCache.getLogoUrl() ?? ''; // reuse logo or address
+    _mobileController.text = LocalCache.getMobileNumber() ?? '';
+    _addressController.text = LocalCache.getAddress() ?? '';
     
     _selectedShopType = LocalCache.getShopType() ?? 'Mobile Repair';
     if (!_shopTypes.contains(_selectedShopType)) {
@@ -81,72 +76,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     super.dispose();
   }
 
+  void _showSnack(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color, behavior: SnackBarBehavior.floating),
+    );
+  }
+
   Future<void> _handleSaveShopDetails() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isSaving = true);
-      
-      final api = ref.read(apiClientProvider);
-      final shopAddress = _addressController.text.trim();
-      final mobile = _mobileController.text.trim();
-      final countryCode = Hive.box('auth_session').get(LocalCache.keyCountryCode) as String? ?? '+91';
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
 
-      try {
-        final http.Response response = await api.put('/shop', {
-          'shopName': _shopNameController.text.trim(),
-          'shopType': _selectedShopType,
-          'ownerName': _ownerNameController.text.trim(),
-          'mobileNumber': mobile.isEmpty ? '1234567890' : mobile,
-          'countryCode': countryCode,
-          'shopAddress': shopAddress.isEmpty ? null : shopAddress,
-          'currencySymbol': _selectedCurrency,
-          'logoUrl': '',
-        });
+    final api = ref.read(apiClientProvider);
+    final shopAddress = _addressController.text.trim();
 
-        if (response.statusCode == 200) {
-          // Success: Save in local Hive cache
-          await LocalCache.updateShopDetails(
-            shopName: _shopNameController.text.trim(),
-            shopType: _selectedShopType,
-            ownerName: _ownerNameController.text.trim(),
-            currencySymbol: _selectedCurrency,
-            logoUrl: '',
-          );
+    try {
+      final http.Response response = await api.put('/shop', {
+        'shopName': _shopNameController.text.trim(),
+        'shopType': _selectedShopType,
+        'ownerName': _ownerNameController.text.trim(),
+        'mobileNumber': _mobileController.text.trim(),
+        'countryCode': LocalCache.getCountryCode(),
+        'shopAddress': shopAddress.isEmpty ? null : shopAddress,
+        'currencySymbol': _selectedCurrency,
+        'gstNumber': LocalCache.getGstNumber(),
+        'logoUrl': LocalCache.getLogoUrl() ?? '',
+      });
+      if (!mounted) return;
 
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Shop settings updated successfully!'),
-                backgroundColor: AppTheme.successColor,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        } else {
-          final errorData = jsonDecode(response.body);
-          throw Exception(errorData['message'] ?? 'Failed to update remote shop details');
-        }
-      } catch (e) {
-        // Fallback: Even if server is offline/unavailable, save locally!
-        await LocalCache.updateShopDetails(
-          shopName: _shopNameController.text.trim(),
-          shopType: _selectedShopType,
-          ownerName: _ownerNameController.text.trim(),
-          currencySymbol: _selectedCurrency,
-          logoUrl: '',
-        );
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Offline: Shop details updated locally on this device.'),
-              backgroundColor: AppTheme.warningColor,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      } finally {
-        if (mounted) setState(() => _isSaving = false);
+      if (response.statusCode == 200) {
+        // Cache exactly what the server stored
+        await LocalCache.saveShopProfile(jsonDecode(response.body) as Map<String, dynamic>);
+        if (mounted) _showSnack('Shop settings updated successfully!', AppTheme.successColor);
+      } else if (response.statusCode == ApiClient.offlineStatusCode) {
+        // Not saved locally either: a local-only profile would silently diverge from the server
+        _showSnack('You are offline. Shop details were not saved, please try again when connected.', AppTheme.warningColor);
+      } else {
+        _showSnack(ApiClient.errorMessage(response, 'Failed to update shop details'), AppTheme.dangerColor);
       }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -165,13 +133,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  // Rebuilds the local copy from the server. Pending local edits are pushed first so nothing is lost.
   Future<void> _handleClearLocalDatabase() async {
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Clear SQLite Database?'),
-          content: const Text('This will delete all local repair orders from your device. Syncing later will pull them back if they exist on the server.'),
+          title: const Text('Re-download all orders?'),
+          content: const Text('Your local copy of the repair orders will be replaced with the latest data from the server.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -180,24 +149,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             TextButton(
               onPressed: () => Navigator.pop(context, true),
               style: TextButton.styleFrom(foregroundColor: AppTheme.dangerColor),
-              child: const Text('Wipe Data'),
+              child: const Text('Re-download'),
             ),
           ],
         );
       },
     );
+    if (confirm != true || !mounted) return;
 
-    if (confirm == true) {
-      await ref.read(databaseProvider).clearAll();
+    setState(() => _syncing = true);
+    final db = ref.read(databaseProvider);
+    final sync = ref.read(syncManagerProvider);
+    try {
+      await sync.triggerSync();
+      if (await db.countUnsyncedOrders() > 0) {
+        if (mounted) {
+          _showSnack('Some changes are not uploaded yet (offline?). Try again when connected.', AppTheme.warningColor);
+        }
+        return;
+      }
+
+      await db.clearAll();
+      await LocalCache.clearLastSyncTime();
+      final success = await sync.triggerSync();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('SQLite database cleared successfully'),
-            backgroundColor: AppTheme.successColor,
-            behavior: SnackBarBehavior.floating,
-          ),
+        _showSnack(
+          success ? 'Orders re-downloaded from the server' : 'Local copy cleared; orders will download when you are online',
+          success ? AppTheme.successColor : AppTheme.warningColor,
         );
       }
+    } finally {
+      if (mounted) setState(() => _syncing = false);
     }
   }
 
@@ -251,6 +233,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     validator: (val) =>
                         (val == null || val.trim().isEmpty) ? 'Owner name is required' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _mobileController,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      labelText: 'Mobile Number',
+                      prefixText: '${LocalCache.getCountryCode()} ',
+                      prefixIcon: const Icon(Icons.phone_outlined),
+                    ),
+                    validator: (val) =>
+                        (val == null || val.trim().isEmpty) ? 'Mobile number is required' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _addressController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Shop Address',
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
@@ -314,7 +317,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       if (val != null) {
                         setState(() => _selectedLanguage = val);
                         await LocalCache.setLanguage(val);
-                        if (mounted) {
+                        if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text('Language preference saved: ${_languages[val]}'),
@@ -348,11 +351,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   const Divider(height: 16, thickness: 0.5),
                   ListTile(
-                    title: const Text('Wipe Local SQLite Orders'),
-                    subtitle: const Text('Deletes all local repair data'),
+                    title: const Text('Re-download Orders'),
+                    subtitle: const Text('Replace the local copy with the server data'),
                     contentPadding: EdgeInsets.zero,
                     trailing: IconButton(
-                      icon: const Icon(Icons.delete_forever, color: AppTheme.dangerColor),
+                      icon: const Icon(Icons.cloud_download_outlined, color: AppTheme.dangerColor),
                       onPressed: _handleClearLocalDatabase,
                     ),
                   ),
@@ -401,7 +404,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
+        side: BorderSide(
           color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
           width: 1.0,
         ),

@@ -1,22 +1,29 @@
 package com.repairshop.backend.dto;
 
-import java.time.LocalDateTime;
+import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import java.util.List;
 
 public class SyncRequest {
 
-    private LocalDateTime lastSyncTime;
+    // Server time returned by the previous sync (null = first sync, send everything)
+    private Instant lastSyncTime;
+
+    // Each order is validated individually by OrderService so one bad record can't block the whole sync
+    @Size(max = 500, message = "Too many orders in one sync batch")
     private List<RepairOrderDto> localOrders;
+
+    @Size(max = 500, message = "Too many deletions in one sync batch")
     private List<String> deletedOrderIds;
 
     public SyncRequest() {
     }
 
-    public LocalDateTime getLastSyncTime() {
+    public Instant getLastSyncTime() {
         return lastSyncTime;
     }
 
-    public void setLastSyncTime(LocalDateTime lastSyncTime) {
+    public void setLastSyncTime(Instant lastSyncTime) {
         this.lastSyncTime = lastSyncTime;
     }
 

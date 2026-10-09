@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:repair_shop_app/core/theme/app_theme.dart';
 import 'package:repair_shop_app/features/auth/presentation/auth_notifier.dart';
+import 'package:repair_shop_app/features/auth/presentation/forgot_password_screen.dart';
 import 'package:repair_shop_app/features/auth/presentation/signup_screen.dart';
 import 'package:repair_shop_app/features/dashboard/presentation/dashboard_screen.dart';
 
@@ -17,6 +18,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Explain why we're back here if the session expired or was revoked
+    final message = ref.read(authProvider).errorMessage;
+    if (message != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: AppTheme.warningColor,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -174,11 +194,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             alignment: Alignment.centerRight,
                             child: TextButton(
                               onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: const Text('Password reset link sent to your registered email.'),
-                                    backgroundColor: AppTheme.successColor,
-                                    behavior: SnackBarBehavior.floating,
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ForgotPasswordScreen(initialEmail: _emailController.text.trim()),
                                   ),
                                 );
                               },

@@ -41,7 +41,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   ];
 
   final List<String> _countryCodes = ['+91', '+1', '+44', '+971', '+61', '+86'];
-  final List<String> _currencies = ['₹', '$', '€', '£', '¥', 'AED'];
+  final List<String> _currencies = ['₹', r'$', '€', '£', '¥', 'AED'];
 
   @override
   void dispose() {

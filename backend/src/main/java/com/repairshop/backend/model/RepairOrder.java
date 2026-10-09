@@ -1,28 +1,36 @@
 package com.repairshop.backend.model;
 
+import com.repairshop.backend.security.EncryptedStringConverter;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import org.springframework.data.domain.Persistable;
+
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Entity
 @Table(name = "repair_orders")
-public class RepairOrder {
+public class RepairOrder implements Persistable<String> {
 
     @Id
-    @Column(nullable = false)
+    @Column(nullable = false, length = 64)
     private String id; // String ID to allow client-side generated UUIDs
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shop_id", referencedColumnName = "id", nullable = false)
     private Shop shop;
 
-    @NotBlank
-    @Column(nullable = false)
-    private String status; // PENDING, REPAIRED, DELIVERED, CANCELLED
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 20)
+    private OrderStatus status;
 
     @NotNull
     @Column(name = "repair_date", nullable = false)
@@ -40,10 +48,10 @@ public class RepairOrder {
     private String customerName;
 
     @NotBlank
-    @Column(name = "customer_number", nullable = false)
+    @Column(name = "customer_number", nullable = false, length = 50)
     private String customerNumber;
 
-    @Column(name = "customer_address")
+    @Column(name = "customer_address", length = 500)
     private String customerAddress;
 
     @NotBlank
@@ -51,17 +59,20 @@ public class RepairOrder {
     private String deviceProblem;
 
     @NotNull
-    @Column(name = "estimate_price", nullable = false)
+    @Column(name = "estimate_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal estimatePrice;
 
     @NotNull
-    @Column(name = "paid_price", nullable = false)
+    @Column(name = "paid_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal paidPrice;
 
-    @Column(name = "device_password")
+    // Customer device unlock secrets are encrypted at rest (AES-GCM)
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(name = "device_password", length = 512)
     private String devicePassword;
 
-    @Column(name = "device_pattern")
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(name = "device_pattern", length = 512)
     private String devicePattern;
 
     @Column(length = 2000)
@@ -87,26 +98,55 @@ public class RepairOrder {
     @Column(name = "notify_email", nullable = false)
     private boolean notifyEmail;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    // Tombstone: deleted orders are kept so the deletion can be synced to every device
+    @Column(nullable = false)
+    private boolean deleted;
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+    // When the order content was last edited (used for last-write-wins conflict resolution)
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    // When the server last wrote this row (used as the delta-sync cursor; always server clock)
+    @Column(name = "server_modified_at", nullable = false)
+    private Instant serverModifiedAt;
+
+    // IDs are assigned by the client, so Spring Data can't infer "new" from a null ID. Without this,
+    // save() would merge (an extra SELECT per order) instead of a plain INSERT.
+    @Transient
+    private boolean isNew = true;
 
     public RepairOrder() {
     }
 
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    protected void markNotNew() {
+        isNew = false;
+    }
+
     @PrePersist
     protected void onCreate() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+            createdAt = now;
         }
-        updatedAt = LocalDateTime.now();
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+        serverModifiedAt = now;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        serverModifiedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
     }
 
     // Getters and Setters
@@ -126,11 +166,11 @@ public class RepairOrder {
         this.shop = shop;
     }
 
-    public String getStatus() {
+    public OrderStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(OrderStatus status) {
         this.status = status;
     }
 
@@ -278,19 +318,31 @@ public class RepairOrder {
         this.notifyEmail = notifyEmail;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    public Instant getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
+    public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
     }
 
-    public LocalDateTime getUpdatedAt() {
+    public Instant getUpdatedAt() {
         return updatedAt;
     }
 
-    public void setUpdatedAt(LocalDateTime updatedAt) {
+    public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Instant getServerModifiedAt() {
+        return serverModifiedAt;
     }
 }

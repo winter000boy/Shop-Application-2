@@ -1,46 +1,49 @@
 server:
-  port: 8080
+  # Hosting platforms (e.g. Render) tell the app which port to listen on via PORT
+  port: ${PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
 
 spring:
   application:
     name: repair-shop-backend
-  
-  # Default Database Config: H2 In-Memory (Zero Setup required for testing)
-  datasource:
-    url: jdbc:h2:mem:repairshopdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: sa
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+  profiles:
+    # "dev" (H2 in-memory, zero setup) unless SPRING_PROFILES_ACTIVE says otherwise.
+    default: dev
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
+    open-in-view: false
+    show-sql: false
     hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
+      # Schema is owned by Flyway (src/main/resources/db/migration); Hibernate only checks it.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
-  # To Switch to PostgreSQL, uncomment the following block and comment the H2 block above:
-  # datasource:
-  #   url: jdbc:postgresql://localhost:5432/repairshop
-  #   username: postgres
-  #   password: yourpassword
-  #   driver-class-name: org.postgresql.Driver
-  # jpa:
-  #   database-platform: org.hibernate.dialect.PostgreSQLDialect
-  #   hibernate:
-  #     ddl-auto: update
-  #   show-sql: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
 
 app:
   jwt:
-    # 256-bit secure secret key encoded in Base64 (For local dev: "antigravitysupersecurekeyformobilerepairshopmanagementappapplication")
-    secret: YW50aWdyYXZpdHlzdXBlcnNlY3VyZWtleWZvcm1vYmlsZXJlcGFpcnNob3BtYW5hZ2VtZW50YXBwYXBwbGljYXRpb24=
+    # Base64-encoded 256-bit key. Must come from the environment outside dev.
+    secret: ${JWT_SECRET}
     # Access token expires in 1 Hour (3600000 ms)
     accessTokenExpirationMs: 3600000
-    # Refresh token expires in 7 Days (604800000 ms)
-    refreshTokenExpirationMs: 604800000
+    # Refresh token expires in 30 Days (2592000000 ms)
+    refreshTokenExpirationMs: 2592000000
+  crypto:
+    # Base64-encoded 256-bit AES key used to encrypt customer device passcodes/patterns at rest.
+    device-secret-key: ${DEVICE_SECRET_KEY}
+  cors:
+    # Comma-separated list of browser origins allowed to call the API. Native mobile apps don't need CORS.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  password-reset:
+    code-expiration-minutes: 15
+    mail-from: ${PASSWORD_RESET_MAIL_FROM:no-reply@fixmanager.app}
