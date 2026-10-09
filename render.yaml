@@ -21,9 +21,10 @@ services:
     runtime: docker
     plan: free
     region: singapore
+    # Only changes under backend/ trigger a deploy. The two paths below are relative to rootDir.
     rootDir: backend
-    dockerContext: ./backend
-    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
     envVars:
       - key: SPRING_PROFILES_ACTIVE
