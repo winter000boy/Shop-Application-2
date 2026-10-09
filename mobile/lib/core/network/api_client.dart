@@ -7,7 +7,9 @@ import 'package:repair_shop_app/core/config/app_config.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
 
 class ApiClient {
-  static const Duration _timeout = Duration(seconds: 20);
+  // Generous because a sleeping server (e.g. Render's free plan) takes ~50s to wake up and answer.
+  // Being offline still fails fast: DNS/connection errors don't wait for this timeout.
+  static const Duration _timeout = Duration(seconds: 75);
 
   // Status code of the synthetic response returned when the server can't be reached
   static const int offlineStatusCode = 503;
@@ -114,6 +116,12 @@ class ApiClient {
       _sessionExpired.add(null);
     }
     return false;
+  }
+
+  /// Fire-and-forget request that wakes a sleeping server while the user is still typing.
+  void warmUp() {
+    final healthUrl = Uri.parse(baseUrl).replace(path: '/actuator/health', query: null);
+    _client.get(healthUrl).timeout(_timeout).then((_) {}, onError: (_) {});
   }
 
   /// Extracts the server's error message from a failed response.
