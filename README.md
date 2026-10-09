@@ -11,29 +11,32 @@ FixManager is a lightweight, high-performance, mobile-first shop management appl
 
 ```mermaid
 graph TD
-    subgraph Mobile App (Flutter)
-        UI[Responsive Presentation Layer] --> |Riverpod State| State[Notifier/Controllers]
-        State --> |Offline Writes| SQLite[(Drift SQLite Cache)]
-        State --> |Reads| SQLite
-        State --> |Key-Value Prefs| Hive[(Hive Key-Value Box)]
-        State --> |Resilient Requests| Client[Resilient HTTP ApiClient]
-        Client --> |Intercept 401 & Auth Headers| ServerSync[Background SyncManager]
+    subgraph mobile["Mobile App (Flutter)"]
+        UI["Screens"] -->|"Riverpod"| State["Notifiers / Operations"]
+        State -->|"offline-first reads & writes"| SQLite[("Drift SQLite<br/>orders, passcodes AES-encrypted")]
+        State -->|"profile & preferences"| Hive[("Hive")]
+        State -->|"session tokens"| Keystore[("Secure Storage<br/>Keychain / Keystore")]
+        Sync["SyncManager<br/>auto: start, resume, reconnect, every 5 min"] --> SQLite
+        Sync --> Client["ApiClient<br/>timeouts, single-flight token refresh"]
+        State --> Client
     end
-    
-    subgraph Cloud Backend (Spring Boot)
-        Client -.-> |JWT Auth Requests| Security[Spring Security & JWT Filter]
-        ServerSync -.-> |Push/Pull Packets| SyncCtrl[Sync/Order Controllers]
-        Security --> SyncCtrl
-        SyncCtrl --> Services[Auth / Order Services]
-        Services --> JPA[Spring Data JPA Repositories]
-        JPA --> Postgres[(PostgreSQL Production DB)]
-        JPA --> H2[(H2 In-Memory Testing DB)]
+
+    subgraph backend["Backend (Spring Boot)"]
+        Security["Spring Security<br/>JWT filter, login throttling"] --> Controllers["Auth / Order / Shop Controllers"]
+        Controllers --> Services["Services<br/>last-write-wins sync, tombstones"]
+        Services --> JPA["Spring Data JPA<br/>passcodes encrypted at rest"]
+        JPA --> Postgres[("PostgreSQL<br/>prod")]
+        JPA --> H2[("H2 in-memory<br/>dev & tests")]
+        Flyway["Flyway migrations"] --> Postgres
+        Health["/actuator/health"]
     end
-    
-    classDef mobile fill:#818cf8,stroke:#4f46e5,stroke-width:2px,color:#fff;
-    classDef backend fill:#34d399,stroke:#059669,stroke-width:2px,color:#fff;
-    class UI,State,SQLite,Hive,Client,ServerSync mobile;
-    class Security,SyncCtrl,Services,JPA,Postgres,H2 backend;
+
+    Client -.->|"HTTPS + JWT<br/>/api/v1/..."| Security
+
+    classDef mobileNode fill:#818cf8,stroke:#4f46e5,stroke-width:2px,color:#fff;
+    classDef backendNode fill:#34d399,stroke:#059669,stroke-width:2px,color:#fff;
+    class UI,State,SQLite,Hive,Keystore,Sync,Client mobileNode;
+    class Security,Controllers,Services,JPA,Postgres,H2,Flyway,Health backendNode;
 ```
 
 ---
