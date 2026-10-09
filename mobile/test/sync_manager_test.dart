@@ -242,4 +242,17 @@ void main() {
     expect(refreshCalls, 1);
     expect(LocalCache.getRefreshToken(), 'new-refresh');
   });
+
+  test('warmUp pings the health endpoint at the server root', () async {
+    final hit = Completer<Uri>();
+    final api = ApiClient(
+      client: MockClient((request) async {
+        hit.complete(request.url);
+        return http.Response('{"status":"UP"}', 200);
+      }),
+      baseUrl: 'https://example.com/api/v1',
+    );
+    api.warmUp();
+    expect((await hit.future).toString(), 'https://example.com/actuator/health');
+  });
 }

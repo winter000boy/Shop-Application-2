@@ -83,6 +83,45 @@ Push to the same branch and Render rebuilds and redeploys automatically. Databas
 
 ## Part 3 — Build and install the Android app
 
+There are two ways to get the APK (the Android install file):
+* **A. Let GitHub build it** (recommended). No Android Studio needed; every change to the app on `master` produces a new APK automatically.
+* **B. Build it on your Mac** with Android Studio (3.1 – 3.2).
+
+### 3.0 A. Build the APK on GitHub (no Android Studio)
+The workflow [`.github/workflows/android-apk.yml`](.github/workflows/android-apk.yml) builds a signed APK and attaches it to a GitHub Release.
+
+**One-time setup: add the signing key to GitHub.** Every version of the app must be signed with the same key, otherwise phones refuse to install updates. The key was created in `~/fixmanager-signing/` on your Mac.
+1. **Back up the `~/fixmanager-signing/` folder** (password manager, encrypted USB drive...). If it is lost, installed apps can never be updated.
+2. On GitHub, open the repository, then **Settings → Secrets and variables → Actions → New repository secret**. Create three secrets. Each value is the text inside the matching file in `~/fixmanager-signing/` (open it with TextEdit and copy everything):
+
+   | Secret name | Copy from file |
+   |---|---|
+   | `ANDROID_KEYSTORE_BASE64` | `ANDROID_KEYSTORE_BASE64.txt` (one very long line) |
+   | `ANDROID_KEYSTORE_PASSWORD` | `ANDROID_KEYSTORE_PASSWORD.txt` |
+   | `ANDROID_KEY_ALIAS` | `ANDROID_KEY_ALIAS.txt` (`upload`) |
+
+**Build:** open the repository's **Actions** tab, then **Android APK → Run workflow**. It also runs on every push to `master` that changes `mobile/`.
+After about 10 minutes, the APK is under **Releases** (right-hand side of the repository page). Download `FixManager.apk` from there.
+
+> The build points the app at `https://fixmanager-api.onrender.com/api/v1`. If your server address changes, set a repository **variable** (same settings page, **Variables** tab) named `API_BASE_URL`.
+
+### Sharing the app with shops
+Because the repository is public, this link always downloads the newest release. Send it to shops on WhatsApp or SMS:
+
+**https://github.com/winter000boy/Shop-Application-2/releases/latest/download/FixManager.apk**
+
+On the phone: open the link, tap the downloaded file, and allow **Install unknown apps** for the browser when Android asks. Android may also show a Play Protect warning for apps from outside the Play Store; tap **Install anyway**.
+
+Other options:
+
+| Option | Good for | How |
+|---|---|---|
+| **Send the APK file** | Shops with poor internet | Send `FixManager.apk` directly on WhatsApp or by USB cable. |
+| **Firebase App Distribution** | A group of shops testing new versions | Free. Upload the APK and add the shops' email addresses; they get an email with an install link and are notified of new versions. |
+| **Google Play Store** | Real customers at scale | See 3.4. Most trustworthy for customers, and updates install automatically. |
+
+For updates, increase `version` in `mobile/pubspec.yaml` (e.g. `1.0.0+1` → `1.0.1+2`; the number after `+` must always go up) and push. GitHub builds a new release, and shops install the new APK over the old one without losing data.
+
 ### 3.1 One-time setup on your Mac
 1. Install [Android Studio](https://developer.android.com/studio). Open it once and let it install the Android SDK.
 2. In a terminal:
@@ -116,11 +155,9 @@ When you release an update, increase the version in `mobile/pubspec.yaml` first 
 
 ### 3.4 Later: publishing on the Google Play Store
 1. Create a Google Play Console developer account. There is a one-time registration fee.
-2. Create your upload key once and keep it safe. **If you lose it, you can't update the app.**
-   ```bash
-   keytool -genkey -v -keystore ~/fixmanager-upload-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
-   ```
-3. Copy `mobile/android/key.properties.example` to `mobile/android/key.properties` and fill in the passwords and path.
+   * **New personal accounts must run a closed test with at least 12 testers for 14 days in a row** before they can publish to everyone. Plan for that, or register as an organization (requires a D-U-N-S number), which is exempt. See [Google's help page](https://support.google.com/googleplay/android-developer/answer/14151465).
+2. Use the upload key already in `~/fixmanager-signing/` (alias `upload`). Don't create a new one, or Play Store and sideloaded installs won't share a signature.
+3. For building on your Mac: copy `mobile/android/key.properties.example` to `mobile/android/key.properties`, set `storeFile` to `~/fixmanager-signing/fixmanager-upload-key.jks` (full path), and use the password from `ANDROID_KEYSTORE_PASSWORD.txt` for both passwords.
 4. Build an app bundle, which is the format the Play Store wants:
    ```bash
    flutter build appbundle --release --dart-define=API_BASE_URL=https://fixmanager-api.onrender.com/api/v1

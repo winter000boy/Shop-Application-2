@@ -5,6 +5,7 @@ import 'package:repair_shop_app/features/auth/presentation/auth_notifier.dart';
 import 'package:repair_shop_app/features/auth/presentation/forgot_password_screen.dart';
 import 'package:repair_shop_app/features/auth/presentation/signup_screen.dart';
 import 'package:repair_shop_app/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:repair_shop_app/shared/providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -22,6 +23,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    // Start waking the server now so it's ready by the time the user taps Sign In
+    ref.read(apiClientProvider).warmUp();
     // Explain why we're back here if the session expired or was revoked
     final message = ref.read(authProvider).errorMessage;
     if (message != null) {
