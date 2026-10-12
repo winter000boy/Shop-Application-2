@@ -1,6 +1,6 @@
 name: repair_shop_app
 description: A lightweight, mobile-first repair shop management application.
-version: 1.0.0+1
+version: 1.0.1+2
 
 publish_to: 'none'
 
@@ -39,5 +39,19 @@ dev_dependencies:
   drift_dev: ^2.18.0
   build_runner: ^2.4.9
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/logo_round.png
+
+# App icon. After replacing the images in assets/branding/, regenerate with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/branding/app_icon.png"
+  # Android 8+ shapes the icon (circle, squircle...); the logo sits inside the safe zone on a matching background
+  adaptive_icon_background: "#EFEFEF"
+  adaptive_icon_foreground: "assets/branding/app_icon_foreground.png"
+  remove_alpha_ios: true
