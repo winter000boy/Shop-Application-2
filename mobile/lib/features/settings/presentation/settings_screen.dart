@@ -367,10 +367,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Center(
                 child: Column(
                   children: [
-                    const Icon(Icons.build_circle_outlined, size: 36, color: AppTheme.primaryColor),
+                    Image.asset('assets/branding/logo_round.png', width: 56, height: 56),
                     const SizedBox(height: 8),
                     const Text(
-                      'FixManager Mobile App',
+                      'Ajgar Mobile UP',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(
@@ -379,7 +379,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '© 2026 FixManager Inc. All rights reserved.',
+                      '© 2026 Ajgar Mobile UP. All rights reserved.',
                       style: TextStyle(fontSize: 10, color: (isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary).withOpacity(0.5)),
                     ),
                   ],

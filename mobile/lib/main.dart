@@ -41,7 +41,7 @@ class FixManagerApp extends ConsumerWidget {
     });
 
     return MaterialApp(
-      title: 'FixManager',
+      title: 'Ajgar Mobile UP',
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,

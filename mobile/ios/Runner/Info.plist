@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>FixManager</string>
+	<string>Ajgar Mobile UP</string>
 	<!-- Allows plain HTTP to localhost/LAN only (local backend during development); the internet still requires HTTPS -->
 	<key>NSAppTransportSecurity</key>
 	<dict>

@@ -98,25 +98,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // App Branding Header
                   Hero(
                     tag: 'app_logo',
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: const BoxDecoration(
-                        color: AppTheme.primaryColor,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(color: Color(0x336366F1), blurRadius: 20, offset: Offset(0, 10)),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.build_rounded,
-                        size: 48,
-                        color: Colors.white,
+                    child: Center(
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(color: Color(0x33000000), blurRadius: 20, offset: Offset(0, 10)),
+                          ],
+                        ),
+                        child: Image.asset('assets/branding/logo_round.png', width: 150, height: 150),
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'FixManager',
+                    'Ajgar Mobile UP',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
