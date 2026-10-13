@@ -367,7 +367,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Center(
                 child: Column(
                   children: [
-                    Image.asset('assets/branding/logo_round.png', width: 56, height: 56),
+                    Image.asset('assets/branding/logo_round.png', width: 80, height: 80),
                     const SizedBox(height: 8),
                     const Text(
                       'Ajgar Mobile UP',
