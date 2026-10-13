@@ -106,7 +106,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             BoxShadow(color: Color(0x33000000), blurRadius: 20, offset: Offset(0, 10)),
                           ],
                         ),
-                        child: Image.asset('assets/branding/logo_round.png', width: 150, height: 150),
+                        child: Image.asset('assets/branding/logo_round.png', width: 190, height: 190),
                       ),
                     ),
                   ),
