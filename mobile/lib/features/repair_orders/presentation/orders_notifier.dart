@@ -3,6 +3,7 @@ import 'package:repair_shop_app/core/security/device_secret_cipher.dart';
 import 'package:repair_shop_app/database/app_database.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
 import 'package:repair_shop_app/services/notification_service.dart';
+import 'package:repair_shop_app/services/photo_store.dart';
 import 'package:repair_shop_app/services/sync_manager.dart';
 import 'package:repair_shop_app/shared/providers.dart';
 import 'package:uuid/uuid.dart';
@@ -50,7 +51,12 @@ class OrderInput {
   final String customerName;
   final String customerNumber;
   final String? customerAddress;
+  final String? alternateNumber;
+  final String? brand;
+  final String? model;
+  final String? imei;
   final String deviceProblem;
+  final DateTime? estimatedDelivery;
   final int estimatePriceMinor;
   final int paidPriceMinor;
   final String? devicePassword;
@@ -60,6 +66,9 @@ class OrderInput {
   final bool accessoriesSdCard;
   final bool accessoriesBackCover;
   final bool accessoriesCharger;
+  final bool accessoriesBattery;
+  final String? accessoriesOther;
+  final String? kycDocType;
   final bool notifyWhatsapp;
   final bool notifyEmail;
 
@@ -71,7 +80,12 @@ class OrderInput {
     required this.customerName,
     required this.customerNumber,
     required this.customerAddress,
+    this.alternateNumber,
+    this.brand,
+    this.model,
+    this.imei,
     required this.deviceProblem,
+    this.estimatedDelivery,
     required this.estimatePriceMinor,
     required this.paidPriceMinor,
     required this.devicePassword,
@@ -81,10 +95,27 @@ class OrderInput {
     required this.accessoriesSdCard,
     required this.accessoriesBackCover,
     required this.accessoriesCharger,
+    this.accessoriesBattery = false,
+    this.accessoriesOther,
+    this.kycDocType,
     required this.notifyWhatsapp,
     required this.notifyEmail,
   });
 }
+
+/// Photos added and removed in the job card form. New paths point at the picker's temporary files.
+class PhotoChanges {
+  final List<String> newDevicePhotos;
+  final List<String> newKycPhotos;
+  final List<OrderPhoto> removed;
+
+  const PhotoChanges({this.newDevicePhotos = const [], this.newKycPhotos = const [], this.removed = const []});
+}
+
+// Photos of one job card, oldest first
+final orderPhotosProvider = StreamProvider.autoDispose.family<List<OrderPhoto>, String>((ref, orderId) {
+  return ref.watch(databaseProvider).watchPhotos(orderId);
+});
 
 // Provider to manage CRUD operations
 final ordersOperationsProvider = Provider((ref) {
@@ -127,7 +158,12 @@ class OrdersOperations {
       customerName: input.customerName,
       customerNumber: input.customerNumber,
       customerAddress: input.customerAddress,
+      alternateNumber: input.alternateNumber,
+      brand: input.brand,
+      model: input.model,
+      imei: input.imei,
       deviceProblem: input.deviceProblem,
+      estimatedDelivery: input.estimatedDelivery,
       estimatePriceMinor: input.estimatePriceMinor,
       paidPriceMinor: input.paidPriceMinor,
       devicePassword: keepSecrets ? _cipher.encrypt(input.devicePassword) : null,
@@ -137,6 +173,9 @@ class OrdersOperations {
       accessoriesSdCard: input.accessoriesSdCard,
       accessoriesBackCover: input.accessoriesBackCover,
       accessoriesCharger: input.accessoriesCharger,
+      accessoriesBattery: input.accessoriesBattery,
+      accessoriesOther: input.accessoriesOther,
+      kycDocType: input.kycDocType,
       notifyWhatsapp: input.notifyWhatsapp,
       notifyEmail: input.notifyEmail,
       syncStatus: syncStatus,
@@ -146,7 +185,8 @@ class OrdersOperations {
     );
   }
 
-  Future<void> createOrder(OrderInput input) async {
+  /// Saves a new job card and returns it (for the WhatsApp message).
+  Future<Order> createOrder(OrderInput input, {PhotoChanges photos = const PhotoChanges()}) async {
     final String orderId = _uuid.v4();
     final order = _buildOrder(
       id: orderId,
@@ -158,9 +198,10 @@ class OrdersOperations {
 
     // 1. Save locally in SQLite
     await _db.insertOrder(order);
+    await _applyPhotoChanges(orderId, photos);
 
-    // 2. Mock sending notification if toggled
-    if (input.notifyWhatsapp || input.notifyEmail) {
+    // 2. Email notification (mock). WhatsApp is opened by the screen so the shop can review and send it.
+    if (input.notifyEmail) {
       await _notify.sendOrderReceived(
         customerName: input.customerName,
         customerNumber: input.customerNumber,
@@ -172,11 +213,13 @@ class OrdersOperations {
 
     // 3. Push to the server shortly (coalesces rapid edits; works offline-first)
     _syncMgr.requestSync();
+    return order;
   }
 
-  Future<void> updateOrder(String id, OrderInput input) async {
+  /// Saves changes to a job card and returns the updated row (null if it no longer exists).
+  Future<Order?> updateOrder(String id, OrderInput input, {PhotoChanges photos = const PhotoChanges()}) async {
     final existing = await _db.getOrderById(id);
-    if (existing == null) return;
+    if (existing == null) return null;
 
     // Check if status changed to REPAIRED to trigger completion notification
     final bool statusChangedToRepaired =
@@ -193,9 +236,10 @@ class OrdersOperations {
 
     // 1. Update locally in SQLite
     await _db.updateOrder(order);
+    await _applyPhotoChanges(id, photos);
 
-    // 2. Mock sending completed notification if status updated
-    if (statusChangedToRepaired && (input.notifyWhatsapp || input.notifyEmail)) {
+    // 2. Email notification (mock) when the repair is done
+    if (statusChangedToRepaired && input.notifyEmail) {
       await _notify.sendRepairCompleted(
         customerName: input.customerName,
         customerNumber: input.customerNumber,
@@ -207,11 +251,76 @@ class OrdersOperations {
 
     // 3. Push to the server shortly
     _syncMgr.requestSync();
+    return order;
+  }
+
+  /// Quick status change from the job list (keeps every other field as it is).
+  Future<Order?> updateStatus(Order order, String status) async {
+    final secrets = revealDeviceSecrets(order);
+    return updateOrder(order.id, OrderInput(
+      status: status,
+      repairDate: order.repairDate,
+      repairTime: order.repairTime,
+      reminderEnabled: order.reminderEnabled,
+      customerName: order.customerName,
+      customerNumber: order.customerNumber,
+      customerAddress: order.customerAddress,
+      alternateNumber: order.alternateNumber,
+      brand: order.brand,
+      model: order.model,
+      imei: order.imei,
+      deviceProblem: order.deviceProblem,
+      estimatedDelivery: order.estimatedDelivery,
+      estimatePriceMinor: order.estimatePriceMinor,
+      paidPriceMinor: order.paidPriceMinor,
+      devicePassword: secrets.password,
+      devicePattern: secrets.pattern,
+      description: order.description,
+      accessoriesSim: order.accessoriesSim,
+      accessoriesSdCard: order.accessoriesSdCard,
+      accessoriesBackCover: order.accessoriesBackCover,
+      accessoriesCharger: order.accessoriesCharger,
+      accessoriesBattery: order.accessoriesBattery,
+      accessoriesOther: order.accessoriesOther,
+      kycDocType: order.kycDocType,
+      notifyWhatsapp: order.notifyWhatsapp,
+      notifyEmail: order.notifyEmail,
+    ));
+  }
+
+  Future<void> _applyPhotoChanges(String orderId, PhotoChanges changes) async {
+    for (final photo in changes.removed) {
+      await PhotoStore.delete(photo.filePath);
+    }
+    await _db.deletePhotosByIds(changes.removed.map((p) => p.id).toList());
+
+    Future<void> add(List<String> paths, String kind) async {
+      for (final source in paths) {
+        final stored = await PhotoStore.persist(source);
+        await _db.insertPhoto(OrderPhoto(
+          id: _uuid.v4(),
+          orderId: orderId,
+          kind: kind,
+          filePath: stored,
+          createdAt: DateTime.now().toUtc(),
+        ));
+      }
+    }
+
+    await add(changes.newDevicePhotos, PhotoKind.device);
+    await add(changes.newKycPhotos, PhotoKind.kyc);
   }
 
   Future<void> deleteOrder(String id) async {
     // 1. Mark as pending_delete or physical delete from SQLite
     await _db.softDeleteOrder(id);
+
+    // Photos are only on this device; remove them with the job card
+    final photos = await _db.getPhotos(id);
+    for (final photo in photos) {
+      await PhotoStore.delete(photo.filePath);
+    }
+    await _db.deletePhotosForOrder(id);
 
     // 2. Push to the server shortly
     _syncMgr.requestSync();

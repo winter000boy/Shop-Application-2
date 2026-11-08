@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:repair_shop_app/core/l10n/app_strings.dart';
 import 'package:repair_shop_app/core/network/api_client.dart';
 import 'package:repair_shop_app/core/theme/app_theme.dart';
 import 'package:repair_shop_app/core/theme/theme_provider.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
+import 'package:repair_shop_app/features/language/presentation/language_screen.dart';
 import 'package:repair_shop_app/shared/providers.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -26,7 +28,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _selectedShopType = 'Mobile Repair';
   String _selectedCurrency = '₹';
-  String _selectedLanguage = 'en';
 
   bool _isSaving = false;
   bool _syncing = false;
@@ -39,12 +40,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   ];
   final List<String> _currencies = ['₹', r'$', '€', '£', '¥', 'AED'];
   
-  final Map<String, String> _languages = {
-    'en': 'English',
-    'hi': 'Hindi (हिन्दी)',
-    'es': 'Spanish (Español)',
-    'fr': 'French (Français)',
-  };
 
   @override
   void initState() {
@@ -63,8 +58,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!_currencies.contains(_selectedCurrency)) {
       _selectedCurrency = _currencies.first;
     }
-
-    _selectedLanguage = LocalCache.getLanguage();
   }
 
   @override
@@ -303,31 +296,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   const Divider(height: 16, thickness: 0.5),
 
-                  // Language Choice dropdown
-                  DropdownButtonFormField<String>(
-                    value: _selectedLanguage,
-                    decoration: const InputDecoration(
-                      labelText: 'Application Language',
-                      prefixIcon: Icon(Icons.language_outlined),
+                  // Language picker (English + 10 Indian languages)
+                  ListTile(
+                    title: Text(context.tr(S.changeLanguage)),
+                    subtitle: Text(AppLanguage.all
+                        .firstWhere((l) => l.code == ref.watch(localeProvider).languageCode)
+                        .nativeName),
+                    leading: const Icon(Icons.language_outlined),
+                    contentPadding: EdgeInsets.zero,
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LanguageScreen()),
                     ),
-                    items: _languages.entries.map((entry) {
-                      return DropdownMenuItem(value: entry.key, child: Text(entry.value));
-                    }).toList(),
-                    onChanged: (val) async {
-                      if (val != null) {
-                        setState(() => _selectedLanguage = val);
-                        await LocalCache.setLanguage(val);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Language preference saved: ${_languages[val]}'),
-                              backgroundColor: AppTheme.successColor,
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        }
-                      }
-                    },
                   ),
                 ],
               ),
@@ -374,7 +355,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      'Version 1.0.0 (Phase 1 Build)',
+                      'Version 1.1.0',
                       style: TextStyle(fontSize: 11, color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary),
                     ),
                     const SizedBox(height: 4),

@@ -98,6 +98,32 @@ public class RepairOrder implements Persistable<String> {
     @Column(name = "notify_email", nullable = false)
     private boolean notifyEmail;
 
+
+    // Job card details
+    @Column(name = "alternate_number", length = 50)
+    private String alternateNumber;
+
+    @Column(name = "brand", length = 100)
+    private String brand;
+
+    @Column(name = "model", length = 100)
+    private String model;
+
+    @Column(name = "imei", length = 20)
+    private String imei;
+
+    @Column(name = "estimated_delivery")
+    private LocalDate estimatedDelivery;
+
+    @Column(name = "accessories_battery", nullable = false)
+    private boolean accessoriesBattery;
+
+    @Column(name = "accessories_other", length = 255)
+    private String accessoriesOther;
+
+    @Column(name = "kyc_doc_type", length = 50)
+    private String kycDocType;
+
     // Tombstone: deleted orders are kept so the deletion can be synced to every device
     @Column(nullable = false)
     private boolean deleted;
@@ -316,6 +342,70 @@ public class RepairOrder implements Persistable<String> {
 
     public void setNotifyEmail(boolean notifyEmail) {
         this.notifyEmail = notifyEmail;
+    }
+
+    public String getAlternateNumber() {
+        return alternateNumber;
+    }
+
+    public void setAlternateNumber(String alternateNumber) {
+        this.alternateNumber = alternateNumber;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getImei() {
+        return imei;
+    }
+
+    public void setImei(String imei) {
+        this.imei = imei;
+    }
+
+    public LocalDate getEstimatedDelivery() {
+        return estimatedDelivery;
+    }
+
+    public void setEstimatedDelivery(LocalDate estimatedDelivery) {
+        this.estimatedDelivery = estimatedDelivery;
+    }
+
+    public boolean isAccessoriesBattery() {
+        return accessoriesBattery;
+    }
+
+    public void setAccessoriesBattery(boolean accessoriesBattery) {
+        this.accessoriesBattery = accessoriesBattery;
+    }
+
+    public String getAccessoriesOther() {
+        return accessoriesOther;
+    }
+
+    public void setAccessoriesOther(String accessoriesOther) {
+        this.accessoriesOther = accessoriesOther;
+    }
+
+    public String getKycDocType() {
+        return kycDocType;
+    }
+
+    public void setKycDocType(String kycDocType) {
+        this.kycDocType = kycDocType;
     }
 
     public boolean isDeleted() {

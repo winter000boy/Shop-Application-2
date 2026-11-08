@@ -9,6 +9,16 @@
 	<key>CFBundleDisplayName</key>
 	<string>Ajgar Mobile UP</string>
 	<!-- Allows plain HTTP to localhost/LAN only (local backend during development); the internet still requires HTTPS -->
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos of the customer's device and ID proof for the job card.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Attach existing photos of the customer's device and ID proof to the job card.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>tel</string>
+		<string>mailto</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

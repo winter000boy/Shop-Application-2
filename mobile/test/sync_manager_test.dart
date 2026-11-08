@@ -54,6 +54,7 @@ void main() {
       accessoriesSdCard: false,
       accessoriesBackCover: false,
       accessoriesCharger: false,
+      accessoriesBattery: false,
       notifyWhatsapp: false,
       notifyEmail: false,
       syncStatus: syncStatus,
@@ -254,5 +255,37 @@ void main() {
     );
     api.warmUp();
     expect((await hit.future).toString(), 'https://example.com/actuator/health');
+  });
+
+  test('job card fields survive a push and pull', () {
+    final order = localOrder('job').copyWith(
+      brand: const Value('Samsung'),
+      model: const Value('Galaxy A54'),
+      imei: const Value('356938035643809'),
+      alternateNumber: const Value('9123456780'),
+      estimatedDelivery: Value(DateTime(2026, 10, 10)),
+      accessoriesBattery: true,
+      accessoriesOther: const Value('Earphones'),
+      kycDocType: const Value('Aadhaar Card'),
+    );
+    final json = orderToJson(order, cipher);
+    expect(json['estimatedDelivery'], '2026-10-10');
+    final back = orderFromJson({...json, 'repairTime': '10:30:00'}, cipher);
+    expect(back.brand, 'Samsung');
+    expect(back.model, 'Galaxy A54');
+    expect(back.imei, '356938035643809');
+    expect(back.alternateNumber, '9123456780');
+    expect(back.estimatedDelivery, DateTime(2026, 10, 10));
+    expect(back.accessoriesBattery, isTrue);
+    expect(back.accessoriesOther, 'Earphones');
+    expect(back.kycDocType, 'Aadhaar Card');
+  });
+
+  test('orders from a server without job card fields still load', () {
+    final legacy = Map<String, dynamic>.from(serverOrder('old'))
+      ..removeWhere((k, _) => ['brand', 'model', 'imei', 'accessoriesBattery', 'estimatedDelivery'].contains(k));
+    final order = orderFromJson(legacy, cipher);
+    expect(order.brand, isNull);
+    expect(order.accessoriesBattery, isFalse);
   });
 }

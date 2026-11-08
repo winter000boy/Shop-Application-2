@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:repair_shop_app/core/l10n/app_strings.dart';
 import 'package:repair_shop_app/core/theme/app_theme.dart';
 import 'package:repair_shop_app/core/theme/theme_provider.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
@@ -29,6 +31,7 @@ class FixManagerApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Dynamically watch active theme state
     final themeMode = ref.watch(themeModeProvider);
+    final locale = ref.watch(localeProvider);
 
     // Whenever the session ends (sign out, or expired/revoked on the server), return to the login screen
     ref.listen<bool>(authProvider.select((s) => s.isAuthenticated), (wasAuthenticated, nowAuthenticated) {
@@ -47,6 +50,14 @@ class FixManagerApp extends ConsumerWidget {
       themeMode: themeMode,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
+      // English + 10 Indian languages; Material widgets (date pickers, dialogs) follow the same locale
+      locale: locale,
+      supportedLocales: AppLanguage.locales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       // Entry route only; later transitions are handled by the screens and the listener above
       home: LocalCache.isAuthenticated() ? const DashboardScreen() : const LoginScreen(),
     );

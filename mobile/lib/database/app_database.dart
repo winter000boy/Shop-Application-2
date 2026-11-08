@@ -36,9 +36,15 @@ class Orders extends Table {
   TextColumn get customerName => text()();
   TextColumn get customerNumber => text()();
   TextColumn get customerAddress => text().nullable()();
+  // Second contact number (family member, office...)
+  TextColumn get alternateNumber => text().nullable()();
 
   // Device details
+  TextColumn get brand => text().nullable()();
+  TextColumn get model => text().nullable()();
+  TextColumn get imei => text().nullable()();
   TextColumn get deviceProblem => text()();
+  DateTimeColumn get estimatedDelivery => dateTime().nullable()();
   // Money in minor units (paise/cents), never floating point
   IntColumn get estimatePriceMinor => integer()();
   IntColumn get paidPriceMinor => integer()();
@@ -52,6 +58,12 @@ class Orders extends Table {
   BoolColumn get accessoriesSdCard => boolean().withDefault(const Constant(false))();
   BoolColumn get accessoriesBackCover => boolean().withDefault(const Constant(false))();
   BoolColumn get accessoriesCharger => boolean().withDefault(const Constant(false))();
+  BoolColumn get accessoriesBattery => boolean().withDefault(const Constant(false))();
+  // Anything else handed over (earphones, box, cable...)
+  TextColumn get accessoriesOther => text().nullable()();
+
+  // Which ID the customer showed (Aadhaar, PAN...). The photo itself stays on this device (OrderPhotos).
+  TextColumn get kycDocType => text().nullable()();
 
   // Notifications
   BoolColumn get notifyWhatsapp => boolean().withDefault(const Constant(false))();
@@ -68,14 +80,47 @@ class Orders extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [Orders])
+class PhotoKind {
+  static const String device = 'device';
+  static const String kyc = 'kyc';
+}
+
+/// Photos of the customer's device and KYC documents. Device-local only: files live in the app's private
+/// documents directory and are not uploaded to the server.
+class OrderPhotos extends Table {
+  TextColumn get id => text()();
+  TextColumn get orderId => text()();
+  TextColumn get kind => text()(); // PhotoKind
+  TextColumn get filePath => text()();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Shop offers and promotions (device-local).
+class Offers extends Table {
+  TextColumn get id => text()();
+  TextColumn get title => text()();
+  TextColumn get details => text().nullable()();
+  TextColumn get discount => text().nullable()(); // free text: "10% off", "₹200 off", "Free tempered glass"
+  DateTimeColumn get validTill => dateTime().nullable()();
+  BoolColumn get active => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DriftDatabase(tables: [Orders, OrderPhotos, Offers])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -90,6 +135,21 @@ class AppDatabase extends _$AppDatabase {
             await m.deleteTable(orders.actualTableName);
             await m.createAll();
             await _createIndexes();
+            return; // createAll already built the v3 tables
+          }
+          if (from < 3) {
+            // Job card fields
+            await m.addColumn(orders, orders.alternateNumber);
+            await m.addColumn(orders, orders.brand);
+            await m.addColumn(orders, orders.model);
+            await m.addColumn(orders, orders.imei);
+            await m.addColumn(orders, orders.estimatedDelivery);
+            await m.addColumn(orders, orders.accessoriesBattery);
+            await m.addColumn(orders, orders.accessoriesOther);
+            await m.addColumn(orders, orders.kycDocType);
+            await m.createTable(orderPhotos);
+            await m.createTable(offers);
+            await _createIndexes();
           }
         },
       );
@@ -97,6 +157,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> _createIndexes() async {
     await customStatement('CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders (status, created_at)');
     await customStatement('CREATE INDEX IF NOT EXISTS idx_orders_sync_status ON orders (sync_status)');
+    await customStatement('CREATE INDEX IF NOT EXISTS idx_order_photos_order ON order_photos (order_id)');
   }
 
   // Query Operations
@@ -217,6 +278,56 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> clearAll() => delete(orders).go();
+
+  // Photos
+
+  Stream<List<OrderPhoto>> watchPhotos(String orderId) => (select(orderPhotos)
+        ..where((t) => t.orderId.equals(orderId))
+        ..orderBy([(t) => OrderingTerm(expression: t.createdAt)]))
+      .watch();
+
+  Future<List<OrderPhoto>> getPhotos(String orderId) =>
+      (select(orderPhotos)..where((t) => t.orderId.equals(orderId))).get();
+
+  Future<List<OrderPhoto>> getAllPhotos() => select(orderPhotos).get();
+
+  Future<void> insertPhoto(OrderPhoto photo) => into(orderPhotos).insert(photo);
+
+  Future<void> deletePhotosByIds(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await (delete(orderPhotos)..where((t) => t.id.isIn(ids))).go();
+  }
+
+  Future<void> deletePhotosForOrder(String orderId) =>
+      (delete(orderPhotos)..where((t) => t.orderId.equals(orderId))).go();
+
+  /// Number of device photos per order, for the photo badge on job cards.
+  Stream<Map<String, int>> watchDevicePhotoCounts() {
+    final count = orderPhotos.id.count();
+    final query = selectOnly(orderPhotos)
+      ..addColumns([orderPhotos.orderId, count])
+      ..where(orderPhotos.kind.equals(PhotoKind.device))
+      ..groupBy([orderPhotos.orderId]);
+    return query.watch().map((rows) => {for (final r in rows) r.read(orderPhotos.orderId)!: r.read(count) ?? 0});
+  }
+
+  // Offers
+
+  Stream<List<Offer>> watchOffers() =>
+      (select(offers)..orderBy([(t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)])).watch();
+
+  Future<void> upsertOffer(Offer offer) => into(offers).insert(offer, mode: InsertMode.insertOrReplace);
+
+  Future<void> deleteOffer(String id) => (delete(offers)..where((t) => t.id.equals(id))).go();
+
+  /// Removes everything belonging to the signed-in shop (explicit sign-out or a different shop signing in).
+  Future<void> clearAllShopData() async {
+    await transaction(() async {
+      await delete(orders).go();
+      await delete(orderPhotos).go();
+      await delete(offers).go();
+    });
+  }
 }
 
 LazyDatabase _openConnection() {

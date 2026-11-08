@@ -298,6 +298,33 @@ class ApiIntegrationTest {
         assertThat(findOrder(response, goodId)).isNotNull();
     }
 
+    @Test
+    void jobCardFieldsRoundTripThroughSync() throws Exception {
+        String token = signup(uniqueEmail()).at("/accessToken").asText();
+        String id = UUID.randomUUID().toString();
+        Map<String, Object> job = order(id, "PENDING", Instant.now());
+        job.put("brand", "Samsung");
+        job.put("model", "Galaxy A54");
+        job.put("imei", "356938035643809");
+        job.put("alternateNumber", "9123456780");
+        job.put("estimatedDelivery", "2026-10-10");
+        job.put("accessoriesBattery", true);
+        job.put("accessoriesOther", "Earphones");
+        job.put("kycDocType", "Aadhaar Card");
+
+        sync(token, null, List.of(job), List.of());
+        JsonNode pulled = findOrder(sync(token, null, List.of(), List.of()), id);
+
+        assertThat(pulled.at("/brand").asText()).isEqualTo("Samsung");
+        assertThat(pulled.at("/model").asText()).isEqualTo("Galaxy A54");
+        assertThat(pulled.at("/imei").asText()).isEqualTo("356938035643809");
+        assertThat(pulled.at("/alternateNumber").asText()).isEqualTo("9123456780");
+        assertThat(pulled.at("/estimatedDelivery").asText()).isEqualTo("2026-10-10");
+        assertThat(pulled.at("/accessoriesBattery").asBoolean()).isTrue();
+        assertThat(pulled.at("/accessoriesOther").asText()).isEqualTo("Earphones");
+        assertThat(pulled.at("/kycDocType").asText()).isEqualTo("Aadhaar Card");
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static String uniqueEmail() {

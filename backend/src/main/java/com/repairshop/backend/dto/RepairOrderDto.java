@@ -69,6 +69,22 @@ public class RepairOrderDto {
     private boolean notifyWhatsapp;
     private boolean notifyEmail;
 
+    // Job card details
+    @Size(max = 50)
+    private String alternateNumber;
+    @Size(max = 100)
+    private String brand;
+    @Size(max = 100)
+    private String model;
+    @Size(max = 20)
+    private String imei;
+    private LocalDate estimatedDelivery;
+    private boolean accessoriesBattery;
+    @Size(max = 255)
+    private String accessoriesOther;
+    @Size(max = 50)
+    private String kycDocType;
+
     private boolean deleted;
 
     private Instant createdAt;
@@ -235,6 +251,70 @@ public class RepairOrderDto {
 
     public void setNotifyEmail(boolean notifyEmail) {
         this.notifyEmail = notifyEmail;
+    }
+
+    public String getAlternateNumber() {
+        return alternateNumber;
+    }
+
+    public void setAlternateNumber(String alternateNumber) {
+        this.alternateNumber = alternateNumber;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getImei() {
+        return imei;
+    }
+
+    public void setImei(String imei) {
+        this.imei = imei;
+    }
+
+    public LocalDate getEstimatedDelivery() {
+        return estimatedDelivery;
+    }
+
+    public void setEstimatedDelivery(LocalDate estimatedDelivery) {
+        this.estimatedDelivery = estimatedDelivery;
+    }
+
+    public boolean isAccessoriesBattery() {
+        return accessoriesBattery;
+    }
+
+    public void setAccessoriesBattery(boolean accessoriesBattery) {
+        this.accessoriesBattery = accessoriesBattery;
+    }
+
+    public String getAccessoriesOther() {
+        return accessoriesOther;
+    }
+
+    public void setAccessoriesOther(String accessoriesOther) {
+        this.accessoriesOther = accessoriesOther;
+    }
+
+    public String getKycDocType() {
+        return kycDocType;
+    }
+
+    public void setKycDocType(String kycDocType) {
+        this.kycDocType = kycDocType;
     }
 
     public boolean isDeleted() {
