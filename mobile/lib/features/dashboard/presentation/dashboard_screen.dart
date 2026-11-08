@@ -1,12 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:repair_shop_app/core/l10n/app_strings.dart';
 import 'package:repair_shop_app/core/theme/app_theme.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
 import 'package:repair_shop_app/features/auth/presentation/auth_notifier.dart';
-import 'package:repair_shop_app/features/repair_orders/presentation/orders_list_screen.dart';
+import 'package:repair_shop_app/features/dashboard/job_filters.dart';
+import 'package:repair_shop_app/features/dashboard/presentation/job_list_card.dart';
+import 'package:repair_shop_app/features/help/presentation/help_support_screen.dart';
+import 'package:repair_shop_app/features/language/presentation/language_screen.dart';
+import 'package:repair_shop_app/features/offers/presentation/offers_screen.dart';
+import 'package:repair_shop_app/features/repair_orders/presentation/add_order_screen.dart';
+import 'package:repair_shop_app/features/repair_orders/presentation/orders_notifier.dart';
 import 'package:repair_shop_app/features/settings/presentation/settings_screen.dart';
 import 'package:repair_shop_app/shared/providers.dart';
 
+final _devicePhotoCountsProvider = StreamProvider.autoDispose<Map<String, int>>((ref) {
+  return ref.watch(databaseProvider).watchDevicePhotoCounts();
+});
+
+/// Home: every repair job, with status tiles, a brand filter and search.
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -16,22 +30,36 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _syncing = false;
+  JobTile _tile = JobTile.all;
+  String? _brand;
+  String _query = '';
+  final _searchController = TextEditingController();
+  Timer? _searchDebounce;
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) setState(() => _query = value.trim());
+    });
+  }
 
   Future<void> _handleSync() async {
     setState(() => _syncing = true);
     final success = await ref.read(syncManagerProvider).triggerSync();
     if (!mounted) return;
     setState(() => _syncing = false);
-
-    {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? 'Database synced successfully!' : 'Sync failed. You are currently offline.'),
-          backgroundColor: success ? AppTheme.successColor : AppTheme.warningColor,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(success ? 'Synced successfully' : 'Sync failed. You are currently offline.'),
+      backgroundColor: success ? AppTheme.successColor : AppTheme.warningColor,
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
   Future<void> _handleLogout() async {
@@ -60,349 +88,344 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
       if (confirm != true) return;
     }
-
     // Navigation back to the login screen is handled by the app-level auth listener
     await auth.logout();
   }
 
-  void _showScaffoldedModuleDialog(String title) {
+  void _showComingSoon(String title) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Theme.of(context).cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(28.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.stars_rounded, size: 56, color: AppTheme.primaryColor),
+            const SizedBox(height: 16),
+            Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            const Text('This module is coming in a later update.', textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+            ),
+          ],
+        ),
       ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(28.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 50,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(10),
-                ),
+    );
+  }
+
+  void _open(Widget screen) {
+    Navigator.pop(context); // close the drawer
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
+  Widget _buildDrawer() {
+    final shopName = LocalCache.getShopName() ?? 'My Repair Shop';
+    final ownerName = LocalCache.getOwnerName() ?? '';
+    const moreTools = [
+      (Icons.handshake_outlined, 'Dealer Repairing'),
+      (Icons.book_outlined, 'Rough Register'),
+      (Icons.analytics_outlined, 'Daily Profit'),
+      (Icons.shopping_bag_outlined, 'Sale Request'),
+      (Icons.point_of_sale_outlined, 'Point of Sale'),
+      (Icons.phonelink_setup_outlined, 'Old Mobile Purchase'),
+      (Icons.receipt_long_outlined, 'Quick Invoice'),
+    ];
+
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Row(
+                children: [
+                  Image.asset('assets/branding/logo_round.png', width: 56, height: 56),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(shopName,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        if (ownerName.isNotEmpty) Text(ownerName, style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
-              const Icon(Icons.stars_rounded, size: 56, color: AppTheme.primaryColor),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.add_box_outlined),
+              title: Text(context.tr(S.newJobCard)),
+              onTap: () => _open(const AddOrderScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.local_offer_outlined),
+              title: Text(context.tr(S.offers)),
+              onTap: () => _open(const OffersScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.translate_outlined),
+              title: Text(context.tr(S.changeLanguage)),
+              onTap: () => _open(const LanguageScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.support_agent_outlined),
+              title: Text(context.tr(S.helpSupport)),
+              onTap: () => _open(const HelpSupportScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: Text(context.tr(S.settings)),
+              onTap: () => _open(const SettingsScreen()),
+            ),
+            ExpansionTile(
+              leading: const Icon(Icons.apps_outlined),
+              title: Text(context.tr(S.moreTools)),
+              children: [
+                for (final (icon, title) in moreTools)
+                  ListTile(
+                    contentPadding: const EdgeInsets.only(left: 32, right: 16),
+                    leading: Icon(icon, size: 20),
+                    title: Text(title),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showComingSoon(title);
+                    },
+                  ),
+              ],
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: AppTheme.dangerColor),
+              title: Text(context.tr(S.signOut), style: const TextStyle(color: AppTheme.dangerColor)),
+              onTap: () {
+                Navigator.pop(context);
+                _handleLogout();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTiles(Map<JobTile, int> counts) {
+    final tiles = [
+      (JobTile.all, S.all, Icons.all_inbox_outlined, Colors.blueGrey),
+      (JobTile.today, S.today, Icons.today_outlined, AppTheme.accentColor),
+      (JobTile.pending, S.pending, Icons.hourglass_top_outlined, AppTheme.warningColor),
+      (JobTile.repaired, S.repaired, Icons.build_circle_outlined, AppTheme.successColor),
+      (JobTile.delivered, S.delivered, Icons.local_shipping_outlined, AppTheme.primaryColor),
+      (JobTile.cancelled, S.cancelled, Icons.cancel_outlined, AppTheme.dangerColor),
+    ];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SizedBox(
+      height: 92,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: tiles.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, i) {
+          final (tile, label, icon, color) = tiles[i];
+          final selected = _tile == tile;
+          return InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => setState(() => _tile = tile),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 104,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: selected ? color : (isDark ? AppTheme.darkSurface : Colors.white),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: selected ? color : (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'This module is scaffolded for Phase 1. Complete implementation, full analytics integration, and printer connectivity will be available in Phase 2!',
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(icon, size: 18, color: selected ? Colors.white : color),
+                      const Spacer(),
+                      Text('${counts[tile] ?? 0}',
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: selected ? Colors.white : null)),
+                    ],
+                  ),
+                  Text(context.tr(label),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: selected ? Colors.white : null)),
+                ],
               ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Got it!'),
-                ),
-              ),
-            ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBrandFilter(List<MapEntry<String, int>> brands) {
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(context.tr(S.allBrands)),
+              selected: _brand == null,
+              onSelected: (_) => setState(() => _brand = null),
+            ),
           ),
-        );
-      },
+          for (final b in brands)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text('${b.key} (${b.value})'),
+                selected: _brand == b.key,
+                onSelected: (sel) => setState(() => _brand = sel ? b.key : null),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final shopName = LocalCache.getShopName() ?? 'My Repair Shop';
-    final ownerName = LocalCache.getOwnerName() ?? 'Owner';
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ordersAsync = ref.watch(ordersStreamProvider(const OrderFilter()));
+    final photoCounts = ref.watch(_devicePhotoCountsProvider).valueOrNull ?? const {};
+    final now = DateTime.now();
 
     return Scaffold(
+      drawer: _buildDrawer(),
       appBar: AppBar(
-        title: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
-              child: const Icon(Icons.build, color: AppTheme.primaryColor, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  shopName,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  'Hello, $ownerName',
-                  style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary),
-                ),
-              ],
-            ),
-          ],
-        ),
+        title: Text(shopName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
         actions: [
-          // Synchronize trigger action
           IconButton(
+            tooltip: context.tr(S.changeLanguage),
+            icon: const Icon(Icons.translate_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LanguageScreen())),
+          ),
+          IconButton(
+            tooltip: context.tr(S.syncNow),
             icon: _syncing
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.cloud_sync_outlined),
-            tooltip: 'Sync Local SQLite with Cloud',
             onPressed: _syncing ? null : _handleSync,
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Depart 1: Repairing Management
-            _buildSectionHeader('Repairing Management', Icons.home_repair_service_outlined),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 1.35,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              children: [
-                _buildDashboardTile(
-                  icon: Icons.assignment_outlined,
-                  color: AppTheme.primaryColor,
-                  title: 'Repair Order',
-                  subtitle: 'Manage repairs',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const OrdersListScreen()),
-                    );
-                  },
-                ),
-                _buildDashboardTile(
-                  icon: Icons.handshake_outlined,
-                  color: AppTheme.successColor,
-                  title: 'Dealer Repairing',
-                  subtitle: 'Outsourced jobs',
-                  onTap: () => _showScaffoldedModuleDialog('Dealer Repairing'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.book_outlined,
-                  color: AppTheme.warningColor,
-                  title: 'Rough Register',
-                  subtitle: 'Quick drafts',
-                  onTap: () => _showScaffoldedModuleDialog('Rough Register'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.analytics_outlined,
-                  color: AppTheme.accentColor,
-                  title: 'Daily Profit',
-                  subtitle: 'Income records',
-                  onTap: () => _showScaffoldedModuleDialog('Daily Profit Record'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.shopping_bag_outlined,
-                  color: Colors.cyan,
-                  title: 'Sale Request',
-                  subtitle: 'Spare requests',
-                  onTap: () => _showScaffoldedModuleDialog('Sale Request'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Depart 2: Retail Shop
-            _buildSectionHeader('Retail Shop & POS', Icons.shopping_cart_outlined),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 1.35,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              children: [
-                _buildDashboardTile(
-                  icon: Icons.point_of_sale_outlined,
-                  color: AppTheme.successColor,
-                  title: 'Point of Sale',
-                  subtitle: 'Billing system',
-                  onTap: () => _showScaffoldedModuleDialog('Point of Sale'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.phonelink_setup_outlined,
-                  color: AppTheme.primaryColor,
-                  title: 'Old Mobile',
-                  subtitle: 'Purchase logs',
-                  onTap: () => _showScaffoldedModuleDialog('Old Mobile Purchase'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.store_mall_directory_outlined,
-                  color: AppTheme.warningColor,
-                  title: 'Local Market',
-                  subtitle: 'Wholesale prices',
-                  onTap: () => _showScaffoldedModuleDialog('Local Market'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.receipt_long_outlined,
-                  color: AppTheme.dangerColor,
-                  title: 'Quick Invoice',
-                  subtitle: 'PDF receipts',
-                  onTap: () => _showScaffoldedModuleDialog('Quick Invoice'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Depart 3: Marketing
-            _buildSectionHeader('Marketing & Engagement', Icons.campaign_outlined),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 1.35,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              children: [
-                _buildDashboardTile(
-                  icon: Icons.groups_outlined,
-                  color: AppTheme.accentColor,
-                  title: 'Technicians',
-                  subtitle: 'Community forum',
-                  onTap: () => _showScaffoldedModuleDialog('Technician Community'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.textsms_outlined,
-                  color: AppTheme.successColor,
-                  title: 'WhatsApp Bulk',
-                  subtitle: 'Broadcast alerts',
-                  onTap: () => _showScaffoldedModuleDialog('WhatsApp Bulk Message'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.notifications_active_outlined,
-                  color: AppTheme.warningColor,
-                  title: 'Auto Alert',
-                  subtitle: 'Collection triggers',
-                  onTap: () => _showScaffoldedModuleDialog('Auto Alert'),
-                ),
-                _buildDashboardTile(
-                  icon: Icons.card_giftcard_outlined,
-                  color: AppTheme.primaryColor,
-                  title: 'Refer & Earn',
-                  subtitle: 'Affiliate links',
-                  onTap: () => _showScaffoldedModuleDialog('Refer & Earn'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 36),
-
-            // Logout Action Button
-            ElevatedButton.icon(
-              onPressed: _handleLogout,
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign Out'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.dangerColor,
-                foregroundColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddOrderScreen())),
+        backgroundColor: AppTheme.primaryColor,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: Text(context.tr(S.newJobCard)),
       ),
-    );
-  }
+      body: ordersAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, _) => Center(child: Text('Could not load jobs: $err')),
+        data: (orders) {
+          final counts = JobFilters.countByTile(orders, now);
+          // Brand chips reflect the selected tile, so "Today" shows only today's brands
+          final inTile = orders.where((o) => JobFilters.matchesTile(o, _tile, now)).toList();
+          final brands = JobFilters.brandCounts(inTile);
+          if (_brand != null && !brands.any((b) => b.key == _brand)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _brand = null);
+            });
+          }
+          final visible = JobFilters.apply(orders, tile: _tile, brand: _brand, query: _query, now: now);
 
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: AppTheme.primaryColor),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: -0.5),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDashboardTile({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isDark ? AppTheme.darkSurface : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
-            width: 1,
-          ),
-          boxShadow: isDark
-              ? null
-              : [
-                  BoxShadow(
-                    color: Colors.grey.shade100,
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                  child: Text(context.tr(S.allJobs),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.3)),
+                ),
               ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, height: 1.2),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+              SliverToBoxAdapter(child: _buildTiles(counts)),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              if (brands.isNotEmpty) SliverToBoxAdapter(child: _buildBrandFilter(brands)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _onSearchChanged,
+                    decoration: InputDecoration(
+                      hintText: context.tr(S.searchJobs),
+                      prefixIcon: const Icon(Icons.search),
+                      isDense: true,
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                _onSearchChanged('');
+                              },
+                            ),
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              if (visible.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade400),
+                        const SizedBox(height: 12),
+                        Text(context.tr(S.noJobs), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Text(context.tr(S.noJobsHint), textAlign: TextAlign.center),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  // Bottom padding keeps the last card clear of the floating button
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                  sliver: SliverList.builder(
+                    itemCount: visible.length,
+                    itemBuilder: (context, i) => JobListCard(
+                      order: visible[i],
+                      photoCount: photoCounts[visible[i].id] ?? 0,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -255,6 +255,14 @@ public class OrderService {
         order.setAccessoriesCharger(dto.isAccessoriesCharger());
         order.setNotifyWhatsapp(dto.isNotifyWhatsapp());
         order.setNotifyEmail(dto.isNotifyEmail());
+        order.setAlternateNumber(dto.getAlternateNumber());
+        order.setBrand(dto.getBrand());
+        order.setModel(dto.getModel());
+        order.setImei(dto.getImei());
+        order.setEstimatedDelivery(dto.getEstimatedDelivery());
+        order.setAccessoriesBattery(dto.isAccessoriesBattery());
+        order.setAccessoriesOther(dto.getAccessoriesOther());
+        order.setKycDocType(dto.getKycDocType());
     }
 
     private RepairOrderDto toDto(RepairOrder order) {
@@ -279,6 +287,14 @@ public class OrderService {
         dto.setAccessoriesCharger(order.isAccessoriesCharger());
         dto.setNotifyWhatsapp(order.isNotifyWhatsapp());
         dto.setNotifyEmail(order.isNotifyEmail());
+        dto.setAlternateNumber(order.getAlternateNumber());
+        dto.setBrand(order.getBrand());
+        dto.setModel(order.getModel());
+        dto.setImei(order.getImei());
+        dto.setEstimatedDelivery(order.getEstimatedDelivery());
+        dto.setAccessoriesBattery(order.isAccessoriesBattery());
+        dto.setAccessoriesOther(order.getAccessoriesOther());
+        dto.setKycDocType(order.getKycDocType());
         dto.setDeleted(order.isDeleted());
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());

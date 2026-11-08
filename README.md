@@ -3,7 +3,11 @@
 FixManager is a lightweight, high-performance, mobile-first shop management application targeted at mobile, laptop, computer, and electronics repair businesses. This repository contains the Phase 1 implementation, featuring:
 * **Authentication & Shop Onboarding**: Multi-tenant email login/signup and profile configurations.
 * **Repair Order Management**: Multi-section diagnostics, accessories checklist, notifications, and visual pattern drawers.
+* **Job Cards & Home Dashboard**: device photos, IMEI, brand/model, screen lock, accessories, KYC, estimated delivery; home page with status tiles (Today, Pending, Repaired, Delivered, Cancelled) and a brand filter.
+* **WhatsApp, Offers, Help & 11 Languages**: one-tap WhatsApp customer updates, shop offers, help & support, English + 10 Indian languages.
 * **Offline-First Synchronization**: A resilient repository structure that saves data instantly in a local SQLite cache and merges it with the cloud when internet access is restored.
+
+Feature-by-feature context for contributors (and AI assistants) lives in **[CLAUDE.md](CLAUDE.md)**.
 
 ---
 

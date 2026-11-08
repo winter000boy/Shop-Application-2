@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:repair_shop_app/core/network/api_client.dart';
 import 'package:repair_shop_app/database/app_database.dart';
 import 'package:repair_shop_app/database/local_cache.dart';
+import 'package:repair_shop_app/services/photo_store.dart';
 import 'package:repair_shop_app/services/sync_manager.dart';
 import 'package:repair_shop_app/shared/providers.dart';
 
@@ -115,11 +116,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return false;
   }
 
-  /// Local orders belong to one shop. Keep them when the same shop signs back in (e.g. after a session
+  /// Local orders, photos and offers belong to one shop. Keep them when the same shop signs back in (e.g. after a session
   /// expired with unsynced edits), wipe them when a different shop signs in on this device.
   Future<void> _prepareLocalDataFor(String shopId) async {
     if (LocalCache.getDataOwnerShopId() != shopId) {
-      await _db.clearAll();
+      await _db.clearAllShopData();
+      await PhotoStore.deleteAll();
       await LocalCache.clearLastSyncTime();
       await LocalCache.setDataOwnerShopId(shopId);
     }
@@ -141,7 +143,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await _api.post('/auth/logout', {'refreshToken': refreshToken});
     }
 
-    await _db.clearAll();
+    await _db.clearAllShopData();
+    await PhotoStore.deleteAll();
     await LocalCache.clearSession();
     await LocalCache.clearDataOwnerShopId();
     state = AuthState(isAuthenticated: false);
